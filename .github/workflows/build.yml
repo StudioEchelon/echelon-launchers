@@ -1,0 +1,36 @@
+name: build-windows-exe
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install deps
+        run: pip install minecraft-launcher-lib pyinstaller
+
+      - name: Build HarborLauncher.exe
+        working-directory: harbor
+        run: pyinstaller --onefile --noconsole --name HarborLauncher --add-data "harbor.jar;." launcher.py
+
+      - name: Build DonShotLauncher.exe
+        working-directory: donshot
+        run: pyinstaller --onefile --noconsole --name DonShotLauncher --add-data "donshot.jar;." --add-data "logo.png;." launcher.py
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HarborLauncher
+          path: harbor/dist/HarborLauncher.exe
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DonShotLauncher
+          path: donshot/dist/DonShotLauncher.exe
