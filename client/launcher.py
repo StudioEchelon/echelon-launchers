@@ -164,10 +164,10 @@ class Hub(tk.Tk):
             c.itemconfig(self._dot_item, fill=f"#{int(0x2A * bright):02x}{g:02x}{int(0x55 + 0x30 * bright):02x}")
 
         # halo du bouton JOUER (pulse doux, plus fort au survol)
-        if hasattr(self, "_play_glow"):
+        if hasattr(self, "_play_glow") and hasattr(self, "_glow_frames"):
             amp = 0.5 + 0.5 * math.sin(self.t * 3.0)
-            wpx = 2 + int(amp * 2) + (2 if self.hover == "play" else 0)
-            c.itemconfig(self._play_glow, width=wpx)
+            idx = min(2, int(amp * 2 + (1 if self.hover == "play" else 0)))
+            c.itemconfig(self._play_glow, image=self._glow_frames[idx])
 
         # particules qui montent (poussière lumineuse)
         acc = GAMES[self.selected]["accent"]
@@ -259,8 +259,10 @@ class Hub(tk.Tk):
         px0, py0 = W - 306, H - 78
         self._play_zone = (px0, py0, px0 + pw, py0 + ph2)
         hov_p = self.hover == "play"
-        self._play_glow = c.create_rectangle(px0 - 3, py0 - 3, px0 + pw + 3, py0 + ph2 + 3,
-                                             outline=g["accent_dim"], width=2)
+        self._glow_frames = [self._glow_img("play:" + g["id"], pw, ph2, accent, 16, a)
+                             for a in (70, 120, 180)]
+        self._play_glow = c.create_image(px0 + pw // 2, py0 + ph2 // 2,
+                                         image=self._glow_frames[0])
         pbtn = self._rounded_img("play:" + g["id"] + ("_h" if hov_p else ""), pw, ph2,
                                  self._brighter(accent) if hov_p else accent,
                                  g["accent_dim"], radius=16)
@@ -285,36 +287,63 @@ class Hub(tk.Tk):
 
     def _rounded_img(self, key, w, h, c_top, c_bottom, radius=12, border=None,
                      shadow=True, highlight=True):
+        """bouton arrondi ANTIALIASÉ : rendu ×4 puis réduction LANCZOS."""
         ck = ("btn", key, w, h)
         if ck in self._img_cache:
             return self._img_cache[ck]
+        S = 4
         pad = 8
-        im = Image.new("RGBA", (w + pad * 2, h + pad * 2), (0, 0, 0, 0))
+        Wp, Hp = (w + pad * 2) * S, (h + pad * 2) * S
+        ws, hs, ps, rs = w * S, h * S, pad * S, radius * S
+        im = Image.new("RGBA", (Wp, Hp), (0, 0, 0, 0))
         d = ImageDraw.Draw(im)
         if shadow:   # ombre portée douce
-            for i, a in ((5, 26), (3, 46), (2, 66)):
-                d.rounded_rectangle((pad - 0 + 1, pad + 2, pad + w + 1, pad + h + i),
-                                    radius=radius + 2, fill=(0, 0, 0, a))
+            sh = Image.new("RGBA", (Wp, Hp), (0, 0, 0, 0))
+            ImageDraw.Draw(sh).rounded_rectangle(
+                (ps + S, ps + 3 * S, ps + ws + S, ps + hs + 4 * S),
+                radius=rs + S, fill=(0, 0, 0, 90))
+            from PIL import ImageFilter
+            im = Image.alpha_composite(im, sh.filter(ImageFilter.GaussianBlur(3 * S)))
+            d = ImageDraw.Draw(im)
         # dégradé vertical
         t, b = self._hex(c_top), self._hex(c_bottom)
-        grad = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+        grad = Image.new("RGBA", (ws, hs), (0, 0, 0, 0))
         gd = ImageDraw.Draw(grad)
-        for yy in range(h):
-            f = yy / max(1, h - 1)
-            gd.line((0, yy, w, yy), fill=(int(t[0] + (b[0] - t[0]) * f),
-                                          int(t[1] + (b[1] - t[1]) * f),
-                                          int(t[2] + (b[2] - t[2]) * f), 255))
-        mask = Image.new("L", (w, h), 0)
-        ImageDraw.Draw(mask).rounded_rectangle((0, 0, w - 1, h - 1), radius=radius, fill=255)
-        im.paste(grad, (pad, pad), mask)
+        for yy in range(hs):
+            f = yy / max(1, hs - 1)
+            gd.line((0, yy, ws, yy), fill=(int(t[0] + (b[0] - t[0]) * f),
+                                           int(t[1] + (b[1] - t[1]) * f),
+                                           int(t[2] + (b[2] - t[2]) * f), 255))
+        mask = Image.new("L", (ws, hs), 0)
+        ImageDraw.Draw(mask).rounded_rectangle((0, 0, ws - 1, hs - 1), radius=rs, fill=255)
+        im.paste(grad, (ps, ps), mask)
         if highlight:   # reflet haut
-            hi = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-            ImageDraw.Draw(hi).rounded_rectangle((2, 2, w - 3, h // 2), radius=radius - 2,
-                                                 fill=(255, 255, 255, 34))
-            im.paste(hi, (pad, pad), hi)
+            hi = Image.new("RGBA", (ws, hs), (0, 0, 0, 0))
+            ImageDraw.Draw(hi).rounded_rectangle((2 * S, 2 * S, ws - 3 * S, hs // 2),
+                                                 radius=rs - 2 * S, fill=(255, 255, 255, 34))
+            im.paste(hi, (ps, ps), hi)
         if border:
-            d.rounded_rectangle((pad, pad, pad + w - 1, pad + h - 1), radius=radius,
-                                outline=self._hex(border) + (255,), width=1)
+            d.rounded_rectangle((ps, ps, ps + ws - 1, ps + hs - 1), radius=rs,
+                                outline=self._hex(border) + (255,), width=S)
+        im = im.resize((w + pad * 2, h + pad * 2), Image.LANCZOS)
+        ph = ImageTk.PhotoImage(im)
+        self._img_cache[ck] = ph
+        return ph
+
+    def _glow_img(self, key, w, h, color, radius, alpha):
+        """halo flouté autour d'un bouton (préréglé, animé par échange d'images)."""
+        ck = ("glow", key, w, h, alpha)
+        if ck in self._img_cache:
+            return self._img_cache[ck]
+        from PIL import ImageFilter
+        S = 2
+        pad = 18
+        im = Image.new("RGBA", ((w + pad * 2) * S, (h + pad * 2) * S), (0, 0, 0, 0))
+        ImageDraw.Draw(im).rounded_rectangle(
+            (pad * S, pad * S, (pad + w) * S, (pad + h) * S),
+            radius=radius * S, outline=self._hex(color) + (alpha,), width=3 * S)
+        im = im.filter(ImageFilter.GaussianBlur(4 * S)).resize(
+            (w + pad * 2, h + pad * 2), Image.LANCZOS)
         ph = ImageTk.PhotoImage(im)
         self._img_cache[ck] = ph
         return ph
