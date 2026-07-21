@@ -69,6 +69,13 @@ class Hub(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Studio Echelon")
+        try:
+            icon = Image.open(resource("assets/studio_icon.png"))
+            icon.thumbnail((128, 128))
+            self._app_icon = ImageTk.PhotoImage(icon)
+            self.iconphoto(True, self._app_icon)
+        except Exception:
+            pass
         self.geometry(f"{W}x{H}")
         self.resizable(False, False)
         self.configure(bg=BG)
@@ -224,8 +231,10 @@ class Hub(tk.Tk):
             self._logo_zones.append((10, y, SIDEBAR, y + 120, i))
             y += 190
 
-        c.create_text(SIDEBAR // 2 + 4, H - 26, text="STUDIO ECHELON",
-                      fill="#5A6A62", font=("Arial", 9, "bold"))
+        # signature studio : porte + wordmark officiel
+        c.create_image(SIDEBAR // 2 + 6, H - 78, image=self._load("assets/studio_icon.png", size=(40, 40)))
+        c.create_image(SIDEBAR // 2 + 6, H - 34, image=self._load("assets/studio_wordmark.png",
+                                                                  size=(130, 42), dim=0.8))
 
         # ── carte info (arrondie, bord accent)
         cx, cy = W - 306, H - 216
@@ -250,7 +259,7 @@ class Hub(tk.Tk):
                                  "#6B77FF" if hov_d else "#5F6BF5",
                                  "#4A56E0" if hov_d else "#4650C8", radius=bh // 2)
         c.create_image(bx0 + bw // 2, by0 + bh // 2, image=dbtn)
-        c.create_image(bx0 + 22, by0 + bh // 2, image=self._discord_icon(20))
+        c.create_image(bx0 + 24, by0 + bh // 2, image=self._load("assets/discord_mark.png", size=(22, 17)))
         c.create_text(bx0 + bw // 2 + 10, by0 + bh // 2, text="Rejoindre le Discord",
                       fill="white", font=("Arial", 11, "bold"))
 
