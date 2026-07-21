@@ -19,11 +19,11 @@ jobs:
 
       - name: Build HarborLauncher.exe
         working-directory: harbor
-        run: pyinstaller --onefile --noconsole --name HarborLauncher --add-data "harbor.jar;." launcher.py
+        run: pyinstaller --onefile --noconsole --name HarborLauncher --add-data "harbor.jar;." --add-data "assets;assets" launcher.py
 
       - name: Build DonShotLauncher.exe
         working-directory: donshot
-        run: pyinstaller --onefile --noconsole --name DonShotLauncher --add-data "donshot.jar;." --add-data "logo.png;." launcher.py
+        run: pyinstaller --onefile --noconsole --name DonShotLauncher --add-data "donshot.jar;." --add-data "assets;assets" launcher.py
 
       - name: Build StudioEchelonClient.exe
         working-directory: client

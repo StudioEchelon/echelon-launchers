@@ -231,10 +231,10 @@ class Hub(tk.Tk):
             self._logo_zones.append((10, y, SIDEBAR, y + 120, i))
             y += 190
 
-        # signature studio : porte + wordmark officiel
-        c.create_image(SIDEBAR // 2 + 6, H - 78, image=self._load("assets/studio_icon.png", size=(40, 40)))
-        c.create_image(SIDEBAR // 2 + 6, H - 34, image=self._load("assets/studio_wordmark.png",
-                                                                  size=(130, 42), dim=0.8))
+        # signature studio : petite porte + wordmark à côté, sur une ligne
+        c.create_image(30, H - 30, image=self._load("assets/studio_icon.png", size=(26, 26)))
+        c.create_image(30 + 14 + 31, H - 30, image=self._load("assets/studio_wordmark.png",
+                                                              size=(100, 20), dim=0.8))
 
         # ── carte info (arrondie, bord accent)
         cx, cy = W - 306, H - 216
