@@ -17,6 +17,9 @@ except ImportError:
 
 MC_VERSION = "1.21.1"
 JAVA_RUNTIME = "java-runtime-delta"   # Java 21 officiel Mojang (MC 1.21)
+LAUNCHER_VERSION = "1.1"
+# bootstrap : manifest + jar publiés sur GitHub Releases (tag roulant "harbor")
+UPDATE_BASE = "https://github.com/StudioEchelon/echelon-launchers/releases/download/harbor"
 
 if platform.system() == "Windows":
     GAME_DIR = os.path.join(os.getenv("APPDATA", os.path.expanduser("~")), "Harbor")
@@ -125,15 +128,90 @@ class Launcher(tk.Tk):
     # ── persistance pseudo
     def _cfg(self): return os.path.join(GAME_DIR, "launcher.json")
 
-    def _load_pseudo(self):
+    def _state(self):
         try:
-            return json.load(open(self._cfg()))["pseudo"]
+            return json.load(open(self._cfg()))
         except Exception:
-            return "Marin"
+            return {}
+
+    def _save_state(self, **kv):
+        os.makedirs(GAME_DIR, exist_ok=True)
+        st = self._state()
+        st.update(kv)
+        json.dump(st, open(self._cfg(), "w"))
+
+    def _load_pseudo(self):
+        return self._state().get("pseudo", "Marin")
 
     def _save_pseudo(self, p):
-        os.makedirs(GAME_DIR, exist_ok=True)
-        json.dump({"pseudo": p}, open(self._cfg(), "w"))
+        self._save_state(pseudo=p)
+
+    # ── bootstrap : manifest distant, MàJ du mod et du launcher ───────
+    def _fetch_manifest(self):
+        import urllib.request
+        try:
+            req = urllib.request.Request(UPDATE_BASE + "/manifest.json",
+                                         headers={"User-Agent": "harbor-launcher"})
+            return json.load(urllib.request.urlopen(req, timeout=8))
+        except Exception:
+            return None   # hors-ligne : on joue avec ce qu'on a
+
+    def _sync_mod(self, mods, manifest):
+        """télécharge/valide le jar du mod selon le manifest (sha256 vérifié)."""
+        import urllib.request, hashlib
+        target = os.path.join(mods, "harbor.jar")
+        if manifest:
+            want = manifest.get("mod_version", "")
+            have = self._state().get("mod_version", "")
+            if want != have or not os.path.exists(target):
+                self.status.set(f"Mise à jour du mod Harbor ({want})…")
+                tmp = target + ".new"
+                req = urllib.request.Request(UPDATE_BASE + "/" + manifest.get("mod_file", "harbor.jar"),
+                                             headers={"User-Agent": "harbor-launcher"})
+                with urllib.request.urlopen(req, timeout=60) as r, open(tmp, "wb") as f:
+                    shutil.copyfileobj(r, f)
+                sha = hashlib.sha256(open(tmp, "rb").read()).hexdigest()
+                if manifest.get("mod_sha256") and sha != manifest["mod_sha256"]:
+                    os.remove(tmp)
+                    raise RuntimeError("Mod corrompu (sha256) — réessaie.")
+                shutil.move(tmp, target)
+                self._save_state(mod_version=want)
+                return
+        if not os.path.exists(target):   # premier lancement hors-ligne : jar embarqué
+            src = next((s for s in MOD_SOURCES if os.path.exists(s)), None)
+            if not src:
+                raise RuntimeError("harbor.jar introuvable et pas de connexion.")
+            shutil.copy(src, target)
+
+    def _self_update(self, manifest):
+        """le launcher se remplace lui-même si une version plus récente est publiée."""
+        if not manifest or not getattr(sys, "frozen", False):
+            return False
+        try:
+            def v(s): return tuple(int(x) for x in str(s).split("."))
+            if v(manifest.get("launcher_version", "0")) <= v(LAUNCHER_VERSION):
+                return False
+            import urllib.request
+            exe = sys.executable
+            new = exe + ".new"
+            self.status.set("Mise à jour du launcher…")
+            req = urllib.request.Request(manifest["launcher_url_win"],
+                                         headers={"User-Agent": "harbor-launcher"})
+            with urllib.request.urlopen(req, timeout=120) as r, open(new, "wb") as f:
+                shutil.copyfileobj(r, f)
+            bat = os.path.join(GAME_DIR, "update.bat")
+            with open(bat, "w") as f:
+                f.write(f'''@echo off
+timeout /t 2 /nobreak >nul
+move /y "{new}" "{exe}" >nul
+start "" "{exe}"
+del "%~f0"
+''')
+            subprocess.Popen(["cmd", "/c", bat], creationflags=0x08000000)
+            self.after(200, self.destroy)
+            return True
+        except Exception:
+            return False
 
     # ── progression mll
     def _callbacks(self):
@@ -178,13 +256,13 @@ class Launcher(tk.Tk):
             except Exception:
                 java = None   # repli : Java du système
 
-            # 3) le mod Harbor + dépendances
+            # 3) bootstrap : manifest distant → MàJ launcher / mod, puis dépendances
+            manifest = self._fetch_manifest()
+            if self._self_update(manifest):
+                return   # le nouveau launcher redémarre tout seul
             mods = os.path.join(GAME_DIR, "mods")
             os.makedirs(mods, exist_ok=True)
-            src = next((s for s in MOD_SOURCES if os.path.exists(s)), None)
-            if not src:
-                raise RuntimeError("harbor.jar introuvable (mets-le à côté du launcher)")
-            shutil.copy(src, os.path.join(mods, "harbor.jar"))
+            self._sync_mod(mods, manifest)
             self._ensure_deps(mods)
 
             # 4) lancement (session locale)
