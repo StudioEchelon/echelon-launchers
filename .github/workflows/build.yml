@@ -15,7 +15,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install deps
-        run: pip install minecraft-launcher-lib pyinstaller
+        run: pip install minecraft-launcher-lib pyinstaller pillow
 
       - name: Build HarborLauncher.exe
         working-directory: harbor
@@ -24,6 +24,15 @@ jobs:
       - name: Build DonShotLauncher.exe
         working-directory: donshot
         run: pyinstaller --onefile --noconsole --name DonShotLauncher --add-data "donshot.jar;." --add-data "logo.png;." launcher.py
+
+      - name: Build StudioEchelonClient.exe
+        working-directory: client
+        run: pyinstaller --onefile --noconsole --name StudioEchelonClient --add-data "assets;assets" launcher.py
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: StudioEchelonClient
+          path: client/dist/StudioEchelonClient.exe
 
       - uses: actions/upload-artifact@v4
         with:
