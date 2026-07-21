@@ -16,7 +16,7 @@ except ImportError:
 
 MC_VERSION = "1.21.1"
 JAVA_RUNTIME = "java-runtime-delta"   # Java 21 officiel Mojang (MC 1.21)
-LAUNCHER_VERSION = "1.1"
+LAUNCHER_VERSION = "1.2"
 # bootstrap : manifest + jar publiés sur GitHub Releases (tag roulant "donshot")
 UPDATE_BASE = "https://github.com/StudioEchelon/echelon-launchers/releases/download/donshot"
 
@@ -287,8 +287,12 @@ del "%~f0"
     def _ensure_fabric_api(self, mods):
         """Télécharge les dépendances (Fabric API, GeckoLib) depuis Modrinth si absentes."""
         import urllib.request
+        # retirés à distance : les mods listés ici sont SUPPRIMÉS chez les joueurs
+        for f in os.listdir(mods):
+            if f.startswith("firstperson"):
+                os.remove(os.path.join(mods, f))
         deps = {"fabric-api": "fabric-api", "geckolib": "geckolib", "sodium": "sodium", "lithium": "lithium",
-                "notenoughanimations": "not-enough-animations", "firstperson": "first-person-model",
+                "notenoughanimations": "not-enough-animations",
                 "PresenceFootsteps": "presence-footsteps"}
         for prefix, project in deps.items():
             if any(f.startswith(prefix) for f in os.listdir(mods)):
