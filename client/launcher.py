@@ -227,38 +227,118 @@ class Hub(tk.Tk):
         c.create_text(SIDEBAR // 2 + 4, H - 26, text="STUDIO ECHELON",
                       fill="#5A6A62", font=("Arial", 9, "bold"))
 
-        # ── carte info
-        cx, cy = W - 300, H - 210
-        c.create_rectangle(cx, cy, W - 40, cy + 118, fill="#101418", outline="#1E2A24", width=1)
-        mini = self._load(g["logo"], size=(90, 60))
-        c.create_image(cx + 60, cy + 34, image=mini)
-        self._dot_item = c.create_oval(cx + 126, cy + 18, cx + 134, cy + 26, fill="#5AE68C", width=0)
-        c.create_text(cx + 142, cy + 22, anchor="w", text="En ligne",
+        # ── carte info (arrondie, bord accent)
+        cx, cy = W - 306, H - 216
+        cw, chh = 266, 122
+        card = self._rounded_img("card:" + g["id"], cw, chh, "#12181C", "#0C1013",
+                                 radius=14, border=g["accent_dim"])
+        c.create_image(cx + cw // 2, cy + chh // 2, image=card)
+        mini = self._load(g["logo"], size=(86, 56))
+        c.create_image(cx + 56, cy + 34, image=mini)
+        self._dot_item = c.create_oval(cx + 118, cy + 18, cx + 126, cy + 26, fill="#5AE68C", width=0)
+        c.create_text(cx + 134, cy + 22, anchor="w", text="En ligne",
                       fill="#5AE68C", font=("Arial", 11, "bold"))
-        c.create_text(cx + 126, cy + 44, anchor="w", text=g["tagline"][:34],
-                      fill="#9AB0A4", font=("Arial", 9), width=150)
-        self._discord_zone = (cx + 12, cy + 74, W - 52, cy + 106)
-        dcol = "#6B77FF" if self.hover == "discord" else "#5865F2"
-        c.create_rectangle(*self._discord_zone, fill=dcol, outline="", width=0)
-        c.create_text((cx + 12 + W - 52) // 2, cy + 90, text=f"Rejoindre {g['name']}",
+        c.create_text(cx + 118, cy + 46, anchor="w", text=g["tagline"][:36],
+                      fill="#9AB0A4", font=("Arial", 9), width=140)
+
+        # bouton Discord : pilule bleurple + vrai logo
+        bw, bh = cw - 24, 34
+        bx0, by0 = cx + 12, cy + chh - bh - 12
+        self._discord_zone = (bx0, by0, bx0 + bw, by0 + bh)
+        hov_d = self.hover == "discord"
+        dbtn = self._rounded_img("discord" + ("_h" if hov_d else ""), bw, bh,
+                                 "#6B77FF" if hov_d else "#5F6BF5",
+                                 "#4A56E0" if hov_d else "#4650C8", radius=bh // 2)
+        c.create_image(bx0 + bw // 2, by0 + bh // 2, image=dbtn)
+        c.create_image(bx0 + 22, by0 + bh // 2, image=self._discord_icon(20))
+        c.create_text(bx0 + bw // 2 + 10, by0 + bh // 2, text="Rejoindre le Discord",
                       fill="white", font=("Arial", 11, "bold"))
 
-        # ── bouton JOUER (halo animé)
-        self._play_zone = (W - 300, H - 74, W - 40, H - 18)
-        self._play_glow = c.create_rectangle(W - 304, H - 78, W - 36, H - 14,
+        # ── bouton JOUER (gros, arrondi, dégradé accent + halo animé)
+        pw, ph2 = 266, 58
+        px0, py0 = W - 306, H - 78
+        self._play_zone = (px0, py0, px0 + pw, py0 + ph2)
+        hov_p = self.hover == "play"
+        self._play_glow = c.create_rectangle(px0 - 3, py0 - 3, px0 + pw + 3, py0 + ph2 + 3,
                                              outline=g["accent_dim"], width=2)
-        pcol = self._brighter(accent) if self.hover == "play" else accent
-        c.create_rectangle(*self._play_zone, fill=pcol, outline="", width=0)
-        c.create_text((W - 300 + W - 40) // 2, H - 46, text="JOUER",
-                      fill="#08120C", font=("Arial Black", 22, "bold"))
+        pbtn = self._rounded_img("play:" + g["id"] + ("_h" if hov_p else ""), pw, ph2,
+                                 self._brighter(accent) if hov_p else accent,
+                                 g["accent_dim"], radius=16)
+        c.create_image(px0 + pw // 2, py0 + ph2 // 2, image=pbtn)
+        c.create_text(px0 + pw // 2 + 1, py0 + ph2 // 2 + 1, text="⛵  JOUER",
+                      fill="#0A2A18", font=("Arial Black", 21, "bold"))
+        c.create_text(px0 + pw // 2, py0 + ph2 // 2, text="⛵  JOUER",
+                      fill="#08120C", font=("Arial Black", 21, "bold"))
 
-        c.create_text(W - 170, H - 88, text=self.status.get(),
+        c.create_text(px0 + pw // 2, py0 - 16, text=self.status.get(),
                       fill="#C8D8CC", font=("Arial", 10))
 
     @staticmethod
     def _brighter(hexcol):
         r, g, b = (int(hexcol[i:i + 2], 16) for i in (1, 3, 5))
         return f"#{min(255, r + 30):02x}{min(255, g + 25):02x}{min(255, b + 30):02x}"
+
+    # ── boutons/cartes pré-rendus PIL (arrondis, dégradé, ombre) ──────
+    @staticmethod
+    def _hex(c):
+        return tuple(int(c[i:i + 2], 16) for i in (1, 3, 5))
+
+    def _rounded_img(self, key, w, h, c_top, c_bottom, radius=12, border=None,
+                     shadow=True, highlight=True):
+        ck = ("btn", key, w, h)
+        if ck in self._img_cache:
+            return self._img_cache[ck]
+        pad = 8
+        im = Image.new("RGBA", (w + pad * 2, h + pad * 2), (0, 0, 0, 0))
+        d = ImageDraw.Draw(im)
+        if shadow:   # ombre portée douce
+            for i, a in ((5, 26), (3, 46), (2, 66)):
+                d.rounded_rectangle((pad - 0 + 1, pad + 2, pad + w + 1, pad + h + i),
+                                    radius=radius + 2, fill=(0, 0, 0, a))
+        # dégradé vertical
+        t, b = self._hex(c_top), self._hex(c_bottom)
+        grad = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+        gd = ImageDraw.Draw(grad)
+        for yy in range(h):
+            f = yy / max(1, h - 1)
+            gd.line((0, yy, w, yy), fill=(int(t[0] + (b[0] - t[0]) * f),
+                                          int(t[1] + (b[1] - t[1]) * f),
+                                          int(t[2] + (b[2] - t[2]) * f), 255))
+        mask = Image.new("L", (w, h), 0)
+        ImageDraw.Draw(mask).rounded_rectangle((0, 0, w - 1, h - 1), radius=radius, fill=255)
+        im.paste(grad, (pad, pad), mask)
+        if highlight:   # reflet haut
+            hi = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+            ImageDraw.Draw(hi).rounded_rectangle((2, 2, w - 3, h // 2), radius=radius - 2,
+                                                 fill=(255, 255, 255, 34))
+            im.paste(hi, (pad, pad), hi)
+        if border:
+            d.rounded_rectangle((pad, pad, pad + w - 1, pad + h - 1), radius=radius,
+                                outline=self._hex(border) + (255,), width=1)
+        ph = ImageTk.PhotoImage(im)
+        self._img_cache[ck] = ph
+        return ph
+
+    def _discord_icon(self, size=22):
+        ck = ("dicon", size)
+        if ck in self._img_cache:
+            return self._img_cache[ck]
+        s = size * 4
+        im = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+        d = ImageDraw.Draw(im)
+        # silhouette manette-fantôme du logo Discord (approx propre)
+        d.rounded_rectangle((s * 0.08, s * 0.18, s * 0.92, s * 0.74), radius=int(s * 0.28),
+                            fill=(255, 255, 255, 255))
+        d.polygon([(s * 0.16, s * 0.66), (s * 0.30, s * 0.88), (s * 0.38, s * 0.70)],
+                  fill=(255, 255, 255, 255))
+        d.polygon([(s * 0.84, s * 0.66), (s * 0.70, s * 0.88), (s * 0.62, s * 0.70)],
+                  fill=(255, 255, 255, 255))
+        d.ellipse((s * 0.28, s * 0.38, s * 0.44, s * 0.58), fill=(88, 101, 242, 255))
+        d.ellipse((s * 0.56, s * 0.38, s * 0.72, s * 0.58), fill=(88, 101, 242, 255))
+        im = im.resize((size, size), Image.LANCZOS)
+        ph = ImageTk.PhotoImage(im)
+        self._img_cache[ck] = ph
+        return ph
 
     # ── interactions ──────────────────────────────────────────────────
     def _hit(self, zone, x, y):
