@@ -20,13 +20,15 @@ except ImportError:
 
 MC_VERSION = "1.21.1"
 JAVA_RUNTIME = "java-runtime-delta"
-LAUNCHER_VERSION = "1.3"
+LAUNCHER_VERSION = "1.4"
 UPDATE_BASE = "https://github.com/StudioEchelon/echelon-launchers/releases/download/donshot"
 
 W, H = 640, 620
 FPS_MS = 40
 ACCENT, ACCENT_D = "#54E63C", "#2FA84C"
 TEXT, MUTED = "#EAFFE8", "#7FA894"
+INPUT_BG = "#0A160C"
+CARD_C1, CARD_C2 = "#0E1A10", "#091108"
 
 if platform.system() == "Windows":
     GAME_DIR = os.path.join(os.getenv("APPDATA", os.path.expanduser("~")), "DonShot")
@@ -72,10 +74,11 @@ class Launcher(tk.Tk):
         self.canvas.bind("<Button-1>", self._click)
         self.canvas.bind("<Motion>", self._motion)
 
-        self.pseudo = tk.Entry(self, font=("Arial", 14), fg=TEXT, bg="#0A1B0E",
-                               insertbackground=ACCENT, relief="flat", justify="center",
-                               highlightbackground=ACCENT_D, highlightcolor=ACCENT,
-                               highlightthickness=1)
+        # champ SANS chrome système : la pilule est dessinée sur le canvas,
+        # l'Entry n'est qu'un texte transparent posé dedans
+        self.pseudo = tk.Entry(self, font=("Arial", 13, "bold"), fg=TEXT, bg=INPUT_BG,
+                               insertbackground=ACCENT, relief="flat", bd=0,
+                               justify="center", highlightthickness=0)
         self.pseudo.insert(0, self._load_pseudo())
 
         self._draw()
@@ -116,50 +119,43 @@ class Launcher(tk.Tk):
             self._cache["bg"] = ImageTk.PhotoImage(Image.composite(dark, im, grad))
         return self._cache["bg"]
 
-    def _rounded(self, key, w, h, c_top, c_bottom, radius=14, border=None):
-        ck = ("r", key, w, h)
+    def _flat(self, key, w, h, rgba, radius, shadow=False, top_light=False):
+        """panneau/pilule FLAT moderne : coins très arrondis AA, alpha (verre),
+        ombre ambiante douce optionnelle — zéro gloss, zéro bordure dure."""
+        ck = ("f", key, w, h)
         if ck in self._cache:
             return self._cache[ck]
-        S, pad = 4, 8
+        S, pad = 4, 14
         ws, hs, ps, rs = w * S, h * S, pad * S, radius * S
         im = Image.new("RGBA", ((w + pad * 2) * S, (h + pad * 2) * S), (0, 0, 0, 0))
-        sh = Image.new("RGBA", im.size, (0, 0, 0, 0))
-        ImageDraw.Draw(sh).rounded_rectangle((ps + S, ps + 3 * S, ps + ws + S, ps + hs + 4 * S),
-                                             radius=rs + S, fill=(0, 0, 0, 90))
-        im = Image.alpha_composite(im, sh.filter(ImageFilter.GaussianBlur(3 * S)))
-        t, b = self._hex(c_top), self._hex(c_bottom)
-        grad = Image.new("RGBA", (ws, hs))
-        gd = ImageDraw.Draw(grad)
-        for yy in range(hs):
-            f = yy / max(1, hs - 1)
-            gd.line((0, yy, ws, yy), fill=(int(t[0] + (b[0] - t[0]) * f),
-                                           int(t[1] + (b[1] - t[1]) * f),
-                                           int(t[2] + (b[2] - t[2]) * f), 255))
-        mask = Image.new("L", (ws, hs), 0)
-        ImageDraw.Draw(mask).rounded_rectangle((0, 0, ws - 1, hs - 1), radius=rs, fill=255)
-        im.paste(grad, (ps, ps), mask)
-        hi = Image.new("RGBA", (ws, hs), (0, 0, 0, 0))
-        ImageDraw.Draw(hi).rounded_rectangle((2 * S, 2 * S, ws - 3 * S, hs // 2),
-                                             radius=rs - 2 * S, fill=(255, 255, 255, 30))
-        im.paste(hi, (ps, ps), hi)
-        if border:
-            ImageDraw.Draw(im).rounded_rectangle((ps, ps, ps + ws - 1, ps + hs - 1),
-                                                 radius=rs, outline=self._hex(border) + (255,), width=S)
+        if shadow:
+            sh = Image.new("RGBA", im.size, (0, 0, 0, 0))
+            ImageDraw.Draw(sh).rounded_rectangle((ps, ps + 4 * S, ps + ws, ps + hs + 5 * S),
+                                                 radius=rs, fill=(0, 0, 0, 70))
+            im = Image.alpha_composite(im, sh.filter(ImageFilter.GaussianBlur(6 * S)))
+        d = ImageDraw.Draw(im)
+        d.rounded_rectangle((ps, ps, ps + ws - 1, ps + hs - 1), radius=rs, fill=rgba)
+        if top_light:   # micro-relief 1px en haut, à peine visible
+            d.rounded_rectangle((ps + S, ps + S, ps + ws - S, ps + int(hs * 0.5)),
+                                radius=rs - S, outline=(255, 255, 255, 16), width=S)
         im = im.resize((w + pad * 2, h + pad * 2), Image.LANCZOS)
         self._cache[ck] = ImageTk.PhotoImage(im)
         return self._cache[ck]
 
-    def _glow(self, key, w, h, color, radius, alpha):
-        ck = ("g", key, w, h, alpha)
-        if ck not in self._cache:
-            S, pad = 2, 18
-            im = Image.new("RGBA", ((w + pad * 2) * S, (h + pad * 2) * S), (0, 0, 0, 0))
-            ImageDraw.Draw(im).rounded_rectangle((pad * S, pad * S, (pad + w) * S, (pad + h) * S),
-                                                 radius=radius * S,
-                                                 outline=self._hex(color) + (alpha,), width=3 * S)
-            im = im.filter(ImageFilter.GaussianBlur(4 * S)).resize((w + pad * 2, h + pad * 2), Image.LANCZOS)
-            self._cache[ck] = ImageTk.PhotoImage(im)
-        return self._cache[ck]
+    def _btn_frames(self, key, w, h, color, radius, n=8):
+        """n images du bouton, du repos au survol : le hover FOND au lieu de sauter."""
+        ck = ("bf", key, w, h)
+        if ck in self._cache:
+            return self._cache[ck]
+        r, g, b = self._hex(color)
+        frames = []
+        for i in range(n):
+            f = i / (n - 1)
+            col = (min(255, int(r + 34 * f)), min(255, int(g + 26 * f)),
+                   min(255, int(b + 34 * f)), 255)
+            frames.append(self._flat(f"{key}#{i}", w, h, col, radius, top_light=True))
+        self._cache[ck] = frames
+        return frames
 
     # ── dessin ────────────────────────────────────────────────────────
     def _draw(self):
@@ -173,48 +169,48 @@ class Launcher(tk.Tk):
         ]
 
         # logo du jeu
-        self._logo_item = c.create_image(W // 2, 96, image=self._img("assets/logo.png", size=(300, 150)))
-        self._logo_y = 96
-        c.create_text(W // 2, 176, text="HERO SHOOTER — par Studio Echelon",
-                      fill=MUTED, font=("Arial", 10))
+        self._logo_item = c.create_image(W // 2, 104, image=self._img("assets/logo.png", size=(330, 165)))
+        self._logo_y = 104
+        c.create_text(W // 2, 190, text="HERO SHOOTER",
+                      fill=TEXT, font=("Arial", 11, "bold"))
+        c.create_text(W // 2, 208, text="par Studio Echelon",
+                      fill=MUTED, font=("Arial", 9))
 
-        # nouveautés
-        card = self._rounded("news", 480, 108, "#0C1B10", "#08120A", radius=14, border="#1E3A22")
-        c.create_image(W // 2, 258, image=card)
-        c.create_text(W // 2 - 224, 216, anchor="w", text="◆ NOUVEAUTÉS  v1.0",
-                      fill="#FFD060", font=("Arial", 9, "bold"))
+        # nouveautés : verre sombre translucide, sans bordure
+        card = self._flat("news", 500, 112, (14, 22, 18, 216), radius=20)
+        c.create_image(W // 2, 288, image=card)
+        c.create_text(W // 2 - 226, 246, anchor="w", text="NOUVEAUTÉS",
+                      fill="#FFD060", font=("Helvetica", 9, "bold"))
+        c.create_text(W // 2 + 226, 246, anchor="e", text="v1.0",
+                      fill=MUTED, font=("Helvetica", 9))
         for i, line in enumerate(NEWS):
-            c.create_text(W // 2 - 224, 238 + i * 18, anchor="w", text=line,
-                          fill=TEXT, font=("Arial", 10))
+            c.create_text(W // 2 - 226, 268 + i * 18, anchor="w", text=line,
+                          fill="#C8DCD0", font=("Helvetica", 10))
 
-        # pseudo
-        c.create_text(W // 2 - 140, 330, anchor="w", text="PSEUDO",
-                      fill=MUTED, font=("Arial", 9, "bold"))
-        c.create_window(W // 2, 356, window=self.pseudo, width=280, height=32)
+        # pseudo : pilule verre + Entry nu dedans
+        iw, ih = 280, 40
+        c.create_image(W // 2, 376, image=self._flat("input", iw, ih,
+                                                     self._hex(INPUT_BG) + (235,), radius=ih // 2))
+        c.create_window(W // 2, 376, window=self.pseudo, width=iw - 60, height=20)
+        c.create_text(W // 2, 349, text="PSEUDO", fill=MUTED, font=("Helvetica", 8, "bold"))
 
-        # bouton JOUER
-        pw, ph = 300, 58
-        px0, py0 = W // 2 - pw // 2, 396
+        # bouton JOUER : flat pilule, hover en fondu (animé dans _tick)
+        pw, ph = 300, 54
+        px0, py0 = W // 2 - pw // 2, 414
         self._play_zone = (px0, py0, px0 + pw, py0 + ph)
-        self._glow_frames = [self._glow("play", pw, ph, ACCENT, 16, a) for a in (60, 110, 170)]
-        self._play_glow = c.create_image(W // 2, py0 + ph // 2, image=self._glow_frames[0])
-        hov = self.hover == "play" and not self.busy
-        btn = self._rounded("play" + ("_h" if hov else ""), pw, ph,
-                            "#7CF0A8" if hov else ACCENT, ACCENT_D, radius=16)
-        c.create_image(W // 2, py0 + ph // 2, image=btn)
-        label = "TÉLÉCHARGEMENT…" if self.busy else "▶  JOUER"
-        size = 14 if self.busy else 18
-        c.create_text(W // 2 + 1, py0 + ph // 2 + 1, text=label,
-                      fill="#0A2A18", font=("Arial Black", size, "bold"))
-        c.create_text(W // 2, py0 + ph // 2, text=label,
-                      fill="#08120C", font=("Arial Black", size, "bold"))
+        self._play_frames = self._btn_frames("play", pw, ph, ACCENT, ph // 2)
+        self._play_item = c.create_image(W // 2, py0 + ph // 2, image=self._play_frames[0])
+        label = "TÉLÉCHARGEMENT…" if self.busy else "▶   JOUER"
+        size = 13 if self.busy else 16
+        self._play_text = c.create_text(W // 2, py0 + ph // 2, text=label,
+                                        fill="#06140C", font=("Helvetica", size, "bold"))
 
-        # barre de progression (piste arrondie + remplissage animé)
-        bw, bh = 480, 8
-        bx0, by0 = W // 2 - bw // 2, 486
+        # barre de progression : piste fine + remplissage arrondi
+        bw, bh = 480, 6
+        bx0, by0 = W // 2 - bw // 2, 492
         self._bar_geom = (bx0, by0, bw, bh)
-        c.create_image(W // 2, by0 + bh // 2, image=self._rounded("track", bw, bh, "#0A161C", "#0A161C",
-                                                                  radius=4, border="#1E3A22"))
+        c.create_image(W // 2, by0 + bh // 2, image=self._flat("track", bw, bh,
+                                                               (255, 255, 255, 26), radius=bh // 2))
         self._bar_fill = c.create_rectangle(bx0, by0, bx0, by0 + bh, fill=ACCENT, width=0)
         self._status_item = c.create_text(W // 2, 512, text=self.status.get(),
                                           fill=MUTED, font=("Arial", 10), width=W - 80)
@@ -235,9 +231,12 @@ class Launcher(tk.Tk):
 
         c.coords(self._logo_item, W // 2, self._logo_y + math.sin(self.t * 1.6) * 4)
 
-        amp = 0.5 + 0.5 * math.sin(self.t * 3.0)
-        idx = min(2, int(amp * 2 + (1 if self.hover == "play" else 0)))
-        c.itemconfig(self._play_glow, image=self._glow_frames[idx])
+        # hover du bouton JOUER : fondu progressif (lerp), pas de saut
+        target = 1.0 if (self.hover == "play" and not self.busy) else 0.0
+        self._play_anim = getattr(self, "_play_anim", 0.0)
+        self._play_anim += (target - self._play_anim) * 0.28
+        idx = round(self._play_anim * (len(self._play_frames) - 1))
+        c.itemconfig(self._play_item, image=self._play_frames[idx])
 
         for i, p in enumerate(self.particles):
             p[1] -= p[2]
@@ -260,11 +259,8 @@ class Launcher(tk.Tk):
             self.launch()
 
     def _motion(self, e):
-        prev = self.hover
         self.hover = "play" if self._hit(self._play_zone, e.x, e.y) else None
         self.configure(cursor="hand2" if self.hover and not self.busy else "")
-        if prev != self.hover:
-            self._draw()
 
     @staticmethod
     def _hit(zone, x, y):
@@ -356,6 +352,38 @@ del "%~f0"
         except Exception:
             return False
 
+
+    # ── mods communs Echelon (EchelonSkin…) : mêmes canaux que le hub ──
+    EXTRAS = [("echelonskin", "echelonskin.jar")]
+
+    def _sync_extras(self, mods):
+        import urllib.request, hashlib
+        root = UPDATE_BASE.rsplit("/", 1)[0]
+        for channel, fname in self.EXTRAS:
+            target = os.path.join(mods, fname)
+            try:
+                req = urllib.request.Request(root + "/" + channel + "/manifest.json",
+                                             headers={"User-Agent": "echelon-launcher"})
+                m = json.load(urllib.request.urlopen(req, timeout=8))
+            except Exception:
+                continue
+            want = m.get("mod_version", "")
+            have = self._state().get("mod_" + channel, "")
+            if want == have and os.path.exists(target):
+                continue
+            self.status.set(f"Téléchargement de {channel}…")
+            tmp = target + ".new"
+            req = urllib.request.Request(root + "/" + channel + "/" + m.get("mod_file", fname),
+                                         headers={"User-Agent": "echelon-launcher"})
+            with urllib.request.urlopen(req, timeout=60) as r, open(tmp, "wb") as f:
+                shutil.copyfileobj(r, f)
+            sha = hashlib.sha256(open(tmp, "rb").read()).hexdigest()
+            if m.get("mod_sha256") and sha != m["mod_sha256"]:
+                os.remove(tmp)
+                continue
+            shutil.move(tmp, target)
+            self._save_state(**{"mod_" + channel: want})
+
     # ── lancement ─────────────────────────────────────────────────────
     def _callbacks(self):
         state = {"max": 100}
@@ -404,6 +432,7 @@ del "%~f0"
             os.makedirs(mods, exist_ok=True)
             self._sync_mod(mods, manifest)
             self._ensure_deps(mods)
+            self._sync_extras(mods)
 
             self.status.set("Chargement du champ de bataille…")
             options = {
