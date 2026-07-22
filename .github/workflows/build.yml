@@ -17,17 +17,19 @@ jobs:
       - name: Install deps
         run: pip install minecraft-launcher-lib pyinstaller pillow
 
+      # --noupx : le packing UPX est LE signal malware #1 → jamais.
+      # --icon + --version-file : exe identifiable = beaucoup moins de faux positifs.
       - name: Build HarborLauncher.exe
         working-directory: harbor
-        run: pyinstaller --onefile --noconsole --name HarborLauncher --add-data "harbor.jar;." --add-data "assets;assets" launcher.py
+        run: pyinstaller --onefile --noconsole --noupx --clean --name HarborLauncher --icon assets/harbor.ico --version-file version.txt --add-data "harbor.jar;." --add-data "assets;assets" launcher.py
 
       - name: Build DonShotLauncher.exe
         working-directory: donshot
-        run: pyinstaller --onefile --noconsole --name DonShotLauncher --add-data "donshot.jar;." --add-data "assets;assets" launcher.py
+        run: pyinstaller --onefile --noconsole --noupx --clean --name DonShotLauncher --icon assets/donshot.ico --version-file version.txt --add-data "donshot.jar;." --add-data "assets;assets" launcher.py
 
       - name: Build StudioEchelonClient.exe
         working-directory: client
-        run: pyinstaller --onefile --noconsole --name StudioEchelonClient --add-data "assets;assets" launcher.py
+        run: pyinstaller --onefile --noconsole --noupx --clean --name StudioEchelonClient --icon assets/studio_icon.ico --version-file ../version_client.txt --add-data "assets;assets" launcher.py
 
       - uses: actions/upload-artifact@v4
         with:
