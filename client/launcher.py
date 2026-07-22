@@ -67,7 +67,7 @@ JAVA_RUNTIME = "java-runtime-delta"
 RELEASES = "https://github.com/StudioEchelon/echelon-launchers/releases/download"
 BG = "#0A0C0E"
 FADE_STEPS = 7
-CLIENT_VERSION = "1.2"
+CLIENT_VERSION = "1.3"
 CLIENT_BASE = RELEASES + "/client"   # manifest.json + StudioEchelonClient.exe
 
 
