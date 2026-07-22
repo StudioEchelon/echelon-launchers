@@ -1,0 +1,48 @@
+{
+  "games": [
+    {
+      "id": "harbor",
+      "name": "HARBOR",
+      "tagline": {
+        "fr": "Raft × Sea of Thieves — survis, navigue, pille.",
+        "en": "Raft × Sea of Thieves — survive, sail, plunder.",
+        "es": "Raft × Sea of Thieves — sobrevive, navega, saquea.",
+        "de": "Raft × Sea of Thieves — überlebe, segle, plündere.",
+        "pt": "Raft × Sea of Thieves — sobrevive, navega, saqueia.",
+        "it": "Raft × Sea of Thieves — sopravvivi, naviga, saccheggia.",
+        "ru": "Raft × Sea of Thieves — выживай, плыви, грабь."
+      },
+      "accent": "#5AE68C",
+      "accent_dim": "#2E7B4C",
+      "logo_url": "https://github.com/StudioEchelon/echelon-launchers/releases/download/client/harbor_logo.png",
+      "bg_url": "https://github.com/StudioEchelon/echelon-launchers/releases/download/client/harbor_bg.png",
+      "channel": "harbor",
+      "dir_name": "Harbor",
+      "deps": {"fabric-api": "fabric-api", "sodium": "sodium", "lithium": "lithium"},
+      "purge": [],
+      "discord": "https://playechelon.net"
+    },
+    {
+      "id": "donshot",
+      "name": "DON SHOT",
+      "tagline": {
+        "fr": "Hero shooter — 35 héros, duels, ligues.",
+        "en": "Hero shooter — 35 heroes, duels, leagues.",
+        "es": "Hero shooter — 35 héroes, duelos, ligas.",
+        "de": "Hero-Shooter — 35 Helden, Duelle, Ligen.",
+        "pt": "Hero shooter — 35 heróis, duelos, ligas.",
+        "it": "Hero shooter — 35 eroi, duelli, leghe.",
+        "ru": "Геройский шутер — 35 героев, дуэли, лиги."
+      },
+      "accent": "#54E63C",
+      "accent_dim": "#2FA84C",
+      "logo_url": "https://github.com/StudioEchelon/echelon-launchers/releases/download/client/donshot_logo.png",
+      "bg_url": "https://github.com/StudioEchelon/echelon-launchers/releases/download/client/donshot_bg.png",
+      "channel": "donshot",
+      "dir_name": "DonShot",
+      "deps": {"fabric-api": "fabric-api", "geckolib": "geckolib", "sodium": "sodium", "lithium": "lithium", "notenoughanimations": "not-enough-animations", "PresenceFootsteps": "presence-footsteps"},
+      "purge": ["firstperson"],
+      "discord": "https://playechelon.net"
+    }
+  ]
+}

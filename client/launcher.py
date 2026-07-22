@@ -42,11 +42,121 @@ def game_root(name):
     return os.path.expanduser("~/" + name)
 
 
-GAMES = [
+# ── i18n : 7 langues principales ──────────────────────────────────────
+LANGS = [
+    ("fr", "Français", "🇫🇷"),
+    ("en", "English", "🇬🇧"),
+    ("es", "Español", "🇪🇸"),
+    ("de", "Deutsch", "🇩🇪"),
+    ("pt", "Português", "🇵🇹"),
+    ("it", "Italiano", "🇮🇹"),
+    ("ru", "Русский", "🇷🇺"),
+]
+
+TR = {
+    "online": {"fr": "En ligne", "en": "Online", "es": "En línea", "de": "Online",
+               "pt": "Online", "it": "Online", "ru": "В сети"},
+    "discord": {"fr": "Rejoindre le Discord", "en": "Join the Discord", "es": "Unirse al Discord",
+                "de": "Discord beitreten", "pt": "Entrar no Discord", "it": "Unisciti al Discord",
+                "ru": "Присоединиться к Discord"},
+    "pseudo": {"fr": "PSEUDO", "en": "USERNAME", "es": "USUARIO", "de": "NAME",
+               "pt": "USUÁRIO", "it": "NOME", "ru": "ИМЯ"},
+    "play": {"fr": "JOUER", "en": "PLAY", "es": "JUGAR", "de": "SPIELEN",
+             "pt": "JOGAR", "it": "GIOCA", "ru": "ИГРАТЬ"},
+    "installing": {"fr": "INSTALLATION…", "en": "INSTALLING…", "es": "INSTALANDO…",
+                   "de": "INSTALLATION…", "pt": "INSTALANDO…", "it": "INSTALLAZIONE…",
+                   "ru": "УСТАНОВКА…"},
+    "options": {"fr": "OPTIONS", "en": "OPTIONS", "es": "OPCIONES", "de": "OPTIONEN",
+                "pt": "OPÇÕES", "it": "OPZIONI", "ru": "НАСТРОЙКИ"},
+    "opt_sub": {"fr": "réglages propres à {n}", "en": "settings for {n}", "es": "ajustes de {n}",
+                "de": "Einstellungen für {n}", "pt": "ajustes de {n}", "it": "impostazioni per {n}",
+                "ru": "настройки для {n}"},
+    "ram": {"fr": "Mémoire allouée", "en": "Allocated memory", "es": "Memoria asignada",
+            "de": "Zugewiesener Speicher", "pt": "Memória alocada", "it": "Memoria allocata",
+            "ru": "Выделенная память"},
+    "ram_sub": {"fr": "RAM réservée au jeu", "en": "RAM reserved for the game",
+                "es": "RAM reservada al juego", "de": "Für das Spiel reservierter RAM",
+                "pt": "RAM reservada ao jogo", "it": "RAM riservata al gioco",
+                "ru": "ОЗУ для игры"},
+    "rpc": {"fr": "Discord Rich Presence", "en": "Discord Rich Presence",
+            "es": "Discord Rich Presence", "de": "Discord Rich Presence",
+            "pt": "Discord Rich Presence", "it": "Discord Rich Presence",
+            "ru": "Discord Rich Presence"},
+    "rpc_sub": {"fr": "affiche ta partie sur ton profil Discord",
+                "en": "shows your session on your Discord profile",
+                "es": "muestra tu partida en tu perfil de Discord",
+                "de": "zeigt dein Spiel in deinem Discord-Profil",
+                "pt": "mostra a sua partida no seu perfil Discord",
+                "it": "mostra la tua partita sul profilo Discord",
+                "ru": "показывает игру в профиле Discord"},
+    "close": {"fr": "Fermer au lancement", "en": "Close on launch", "es": "Cerrar al iniciar",
+              "de": "Beim Start schließen", "pt": "Fechar ao iniciar", "it": "Chiudi all'avvio",
+              "ru": "Закрыть при запуске"},
+    "close_sub": {"fr": "le launcher se ferme quand le jeu démarre",
+                  "en": "the launcher closes when the game starts",
+                  "es": "el launcher se cierra al iniciar el juego",
+                  "de": "der Launcher schließt beim Spielstart",
+                  "pt": "o launcher fecha quando o jogo inicia",
+                  "it": "il launcher si chiude all'avvio del gioco",
+                  "ru": "лаунчер закрывается при старте игры"},
+    "folder": {"fr": "Dossier du jeu", "en": "Game folder", "es": "Carpeta del juego",
+               "de": "Spielordner", "pt": "Pasta do jogo", "it": "Cartella del gioco",
+               "ru": "Папка игры"},
+    "open": {"fr": "OUVRIR", "en": "OPEN", "es": "ABRIR", "de": "ÖFFNEN",
+             "pt": "ABRIR", "it": "APRI", "ru": "ОТКРЫТЬ"},
+    "done": {"fr": "TERMINÉ", "en": "DONE", "es": "HECHO", "de": "FERTIG",
+             "pt": "CONCLUÍDO", "it": "FATTO", "ru": "ГОТОВО"},
+    "studio_role": {"fr": "Éditeur & créateur de ces projets",
+                    "en": "Publisher & creator of these projects",
+                    "es": "Editor y creador de estos proyectos",
+                    "de": "Herausgeber & Schöpfer dieser Projekte",
+                    "pt": "Editor e criador destes projetos",
+                    "it": "Editore e creatore di questi progetti",
+                    "ru": "Издатель и создатель этих проектов"},
+    "see_site": {"fr": "Voir le site", "en": "Visit the website", "es": "Ver el sitio",
+                 "de": "Website besuchen", "pt": "Ver o site", "it": "Vai al sito",
+                 "ru": "Открыть сайт"},
+    "language": {"fr": "Langue", "en": "Language", "es": "Idioma", "de": "Sprache",
+                 "pt": "Idioma", "it": "Lingua", "ru": "Язык"},
+    "ready": {"fr": "", "en": "", "es": "", "de": "", "pt": "", "it": "", "ru": ""},
+    "installing_mc": {"fr": "Installation de Minecraft {v} + Fabric…",
+                      "en": "Installing Minecraft {v} + Fabric…",
+                      "es": "Instalando Minecraft {v} + Fabric…",
+                      "de": "Installiere Minecraft {v} + Fabric…",
+                      "pt": "Instalando Minecraft {v} + Fabric…",
+                      "it": "Installazione di Minecraft {v} + Fabric…",
+                      "ru": "Установка Minecraft {v} + Fabric…"},
+    "installing_java": {"fr": "Installation de Java 21 (Mojang)…",
+                        "en": "Installing Java 21 (Mojang)…", "es": "Instalando Java 21 (Mojang)…",
+                        "de": "Installiere Java 21 (Mojang)…", "pt": "Instalando Java 21 (Mojang)…",
+                        "it": "Installazione di Java 21 (Mojang)…", "ru": "Установка Java 21 (Mojang)…"},
+    "launching": {"fr": "Lancement de {n}…", "en": "Launching {n}…", "es": "Iniciando {n}…",
+                  "de": "Starte {n}…", "pt": "Iniciando {n}…", "it": "Avvio di {n}…",
+                  "ru": "Запуск {n}…"},
+    "have_fun": {"fr": "Bon jeu ! (tu peux fermer le launcher)",
+                 "en": "Have fun! (you can close the launcher)",
+                 "es": "¡Diviértete! (puedes cerrar el launcher)",
+                 "de": "Viel Spaß! (du kannst den Launcher schließen)",
+                 "pt": "Bom jogo! (podes fechar o launcher)",
+                 "it": "Buon gioco! (puoi chiudere il launcher)",
+                 "ru": "Приятной игры! (можно закрыть лаунчер)"},
+}
+
+
+# Catalogue par défaut EMBARQUÉ (fallback si pas de connexion au 1er lancement).
+# En vrai, la liste des jeux vient du catalogue distant (catalog.json sur le
+# canal client) → ajouter/modifier un projet = éditer ce JSON, sans rebuild.
+DEFAULT_GAMES = [
     {
         "id": "harbor",
         "name": "HARBOR",
-        "tagline": "Raft × Sea of Thieves — survis, navigue, pille.",
+        "tagline": {"fr": "Raft × Sea of Thieves — survis, navigue, pille.",
+                    "en": "Raft × Sea of Thieves — survive, sail, plunder.",
+                    "es": "Raft × Sea of Thieves — sobrevive, navega, saquea.",
+                    "de": "Raft × Sea of Thieves — überlebe, segle, plündere.",
+                    "pt": "Raft × Sea of Thieves — sobrevive, navega, saqueia.",
+                    "it": "Raft × Sea of Thieves — sopravvivi, naviga, saccheggia.",
+                    "ru": "Raft × Sea of Thieves — выживай, плыви, грабь."},
         "accent": "#5AE68C",
         "accent_dim": "#2E7B4C",
         "logo": "assets/harbor_logo.png",
@@ -63,7 +173,13 @@ GAMES = [
     {
         "id": "donshot",
         "name": "DON SHOT",
-        "tagline": "Hero shooter — 35 héros, duels, ligues.",
+        "tagline": {"fr": "Hero shooter — 35 héros, duels, ligues.",
+                    "en": "Hero shooter — 35 heroes, duels, leagues.",
+                    "es": "Hero shooter — 35 héroes, duelos, ligas.",
+                    "de": "Hero-Shooter — 35 Helden, Duelle, Ligen.",
+                    "pt": "Hero shooter — 35 heróis, duelos, ligas.",
+                    "it": "Hero shooter — 35 eroi, duelli, leghe.",
+                    "ru": "Геройский шутер — 35 героев, дуэли, лиги."},
         "accent": "#54E63C",
         "accent_dim": "#2FA84C",
         "logo": "assets/donshot_logo.png",
@@ -81,6 +197,79 @@ GAMES = [
     },
 ]
 
+GAMES = []   # rempli au démarrage depuis le catalogue distant (ou le défaut)
+
+
+def _cache_dir():
+    d = os.path.join(game_root("StudioEchelon"), "cache")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def _cached_asset(url):
+    """télécharge une image d'asset si absente (nom = hash de l'URL) → chemin local."""
+    import urllib.request, hashlib
+    ext = ".png"
+    name = hashlib.sha1(url.encode()).hexdigest()[:16] + ext
+    path = os.path.join(_cache_dir(), name)
+    if not os.path.exists(path):
+        req = urllib.request.Request(url, headers={"User-Agent": "echelon-client"})
+        tmp = path + ".part"
+        with urllib.request.urlopen(req, timeout=30) as r, open(tmp, "wb") as f:
+            shutil.copyfileobj(r, f)
+        os.replace(tmp, path)
+    return path
+
+
+def _normalize(entry):
+    """convertit une entrée de catalogue (JSON) en jeu prêt à l'emploi."""
+    gid = entry["id"]
+    g = dict(entry)
+    g["dir"] = game_root(entry.get("dir_name", entry["name"].replace(" ", "")))
+    g["base"] = RELEASES + "/" + entry.get("channel", gid)
+    g["seed"] = gid + ":"
+    g["mod_file"] = entry.get("mod_file", gid + ".jar")
+    g["deps"] = entry.get("deps", {"fabric-api": "fabric-api", "sodium": "sodium", "lithium": "lithium"})
+    g["purge"] = entry.get("purge", [])
+    g["accent_dim"] = entry.get("accent_dim", entry["accent"])
+    # assets : URL distante (cache local) sinon chemin embarqué
+    for k, urlk in (("logo", "logo_url"), ("bg", "bg_url")):
+        if entry.get(urlk):
+            try:
+                g[k] = _cached_asset(entry[urlk])
+            except Exception:
+                g[k] = entry.get(k, f"assets/{gid}_{k}.png")   # repli embarqué
+        else:
+            g[k] = entry.get(k, f"assets/{gid}_{k}.png")
+    return g
+
+
+def load_games():
+    """catalogue distant → cache → défaut embarqué. Jamais bloquant."""
+    import urllib.request
+    raw = None
+    cache = os.path.join(game_root("StudioEchelon"), "catalog.json")
+    try:
+        req = urllib.request.Request(CLIENT_BASE + "/catalog.json",
+                                     headers={"User-Agent": "echelon-client"})
+        raw = json.load(urllib.request.urlopen(req, timeout=8)).get("games")
+        os.makedirs(os.path.dirname(cache), exist_ok=True)
+        json.dump({"games": raw}, open(cache, "w"))
+    except Exception:
+        try:
+            raw = json.load(open(cache)).get("games")
+        except Exception:
+            raw = None
+    if not raw:
+        return list(DEFAULT_GAMES)
+    out = []
+    for entry in raw:
+        try:
+            out.append(_normalize(entry))
+        except Exception:
+            pass
+    return out or list(DEFAULT_GAMES)
+
 
 class Hub(tk.Tk):
     def __init__(self):
@@ -90,6 +279,8 @@ class Hub(tk.Tk):
         if self._self_update():
             self.destroy()
             return
+        global GAMES
+        GAMES = load_games()   # catalogue distant → cache → défaut
         self.title("Studio Echelon")
         self._install_font()
         try:
@@ -107,6 +298,10 @@ class Hub(tk.Tk):
         self.FONT = "Zalando Sans Expanded" if "Zalando Sans Expanded" in fams else "Helvetica"
 
         self.selected = 0
+        self.lang = self._state().get("lang", "fr")
+        if self.lang not in [c for c, _, _ in LANGS]:
+            self.lang = "fr"
+        self.lang_open = False
         self.options_open = False
         self.status = tk.StringVar(value="")
         self.progress_val = tk.DoubleVar(value=0)
@@ -190,15 +385,23 @@ del "%~f0"
     def F(self, size, bold=False):
         return (self.FONT, size, "bold") if bold else (self.FONT, size)
 
+    def T(self, key, **kw):
+        s = TR.get(key, {}).get(self.lang) or TR.get(key, {}).get("fr", key)
+        return s.format(**kw) if kw else s
+
     # ── images ────────────────────────────────────────────────────────
     @staticmethod
     def _hex(c):
         return tuple(int(c[i:i + 2], 16) for i in (1, 3, 5))
 
+    @staticmethod
+    def _asset_path(path):
+        return path if os.path.isabs(path) else resource(path)
+
     def _load(self, path, size=None, dim=1.0):
         key = (path, size, dim)
         if key not in self._img_cache:
-            im = Image.open(resource(path)).convert("RGBA")
+            im = Image.open(self._asset_path(path)).convert("RGBA")
             if size:
                 im.thumbnail(size, Image.LANCZOS)
             if dim < 1.0:
@@ -209,7 +412,7 @@ del "%~f0"
     def _bg_pil(self, game):
         key = ("bgpil", game["id"])
         if key not in self._img_cache:
-            im = Image.open(resource(game["bg"])).convert("RGB")
+            im = Image.open(self._asset_path(game["bg"])).convert("RGB")
             ratio = max(W / im.width, H / im.height)
             im = im.resize((int(im.width * ratio) + 1, int(im.height * ratio) + 1), Image.LANCZOS)
             x0 = (im.width - W) // 2
@@ -373,9 +576,29 @@ del "%~f0"
             self._logo_zones.append((10, y, SIDEBAR, y + 120, i))
             y += 190
 
-        c.create_image(30, H - 30, image=self._load("assets/studio_icon.png", size=(26, 26)))
+        studio_hov = self.hover == "studio"
+        c.create_image(30, H - 30, image=self._load("assets/studio_icon.png", size=(26, 26),
+                                                    dim=1.0 if studio_hov else 0.9))
         c.create_image(30 + 14 + 31, H - 30, image=self._load("assets/studio_wordmark.png",
-                                                              size=(100, 20), dim=0.8))
+                                                              size=(100, 20), dim=1.0 if studio_hov else 0.8))
+        self._studio_zone = (14, H - 46, 14 + 130, H - 14)
+        if studio_hov:
+            self._draw_studio_tooltip(c)
+
+        # ── sélecteur de langue (haut-droite)
+        cur = next((l for l in LANGS if l[0] == self.lang), LANGS[0])
+        lw, lh = 78, 30
+        lx, ly = W - lw - 18, 16
+        self._lang_zone = (lx, ly, lx + lw, ly + lh)
+        lang_hov = self.hover == "lang"
+        c.create_image(lx + lw // 2, ly + lh // 2,
+                       image=self._flat("langbtn" + ("_h" if lang_hov else ""), lw, lh,
+                                        (22, 30, 34, 235) if lang_hov else (14, 20, 23, 210), radius=12))
+        c.create_text(lx + 20, ly + lh // 2, text=cur[2], font=(self.FONT, 13))
+        c.create_text(lx + 40, ly + lh // 2, text=cur[0].upper(), fill="#DCE8E0", font=self.F(9, True))
+        c.create_text(lx + lw - 14, ly + lh // 2, text="▾", fill="#7A948A", font=self.F(8))
+        if self.lang_open:
+            self._draw_lang_menu(c, lx, ly + lh + 6, lw)
 
         # ── colonne droite : carte info, pseudo, JOUER, progression
         cw = 280
@@ -388,9 +611,9 @@ del "%~f0"
         mini = self._load(g["logo"], size=(82, 54))
         c.create_image(cx + 52, cy + 34, image=mini)
         self._dot_item = c.create_oval(cx + 112, cy + 20, cx + 120, cy + 28, fill="#5AE68C", width=0)
-        c.create_text(cx + 128, cy + 24, anchor="w", text="En ligne",
+        c.create_text(cx + 128, cy + 24, anchor="w", text=self.T("online"),
                       fill="#5AE68C", font=self.F(10, True))
-        c.create_text(cx + 112, cy + 48, anchor="w", text=g["tagline"][:38],
+        c.create_text(cx + 112, cy + 48, anchor="w", text=g["tagline"][self.lang][:44],
                       fill="#9AB0A4", font=self.F(8), width=156)
         bw2, bh2 = cw - 24, 32
         bx0, by0 = cx + 12, cy + 116 - bh2 - 12
@@ -400,7 +623,7 @@ del "%~f0"
         c.create_image(bx0 + bw2 // 2, by0 + bh2 // 2,
                        image=self._discord_frames[round(hovd * 7)])
         c.create_image(bx0 + 24, by0 + bh2 // 2, image=self._load("assets/discord_mark.png", size=(20, 15)))
-        c.create_text(bx0 + bw2 // 2 + 8, by0 + bh2 // 2, text="Rejoindre le Discord",
+        c.create_text(bx0 + bw2 // 2 + 8, by0 + bh2 // 2, text=self.T("discord"),
                       fill="white", font=self.F(10, True))
 
         # pseudo (pilule verre, champ dessiné à la main)
@@ -412,7 +635,7 @@ del "%~f0"
         self._input_text = c.create_text(cx + cw // 2, iy, text=self.pseudo_text,
                                          fill="#EAF6EF", font=self.F(12, True))
         self._input_cursor = c.create_rectangle(0, 0, 0, 0, fill="#5AE68C", width=0)
-        c.create_text(cx + cw // 2, iy - 30, text="PSEUDO", fill="#7A948A", font=self.F(8, True))
+        c.create_text(cx + cw // 2, iy - 30, text=self.T("pseudo"), fill="#7A948A", font=self.F(8, True))
 
         # JOUER + ⚙ options (séparées par jeu)
         ph2 = 54
@@ -421,7 +644,7 @@ del "%~f0"
         self._play_zone = (cx, py0, cx + pw2, py0 + ph2)
         self._play_frames = self._btn_frames("play:" + g["id"], pw2, ph2, accent, 12)
         self._play_item = c.create_image(cx + pw2 // 2, py0 + ph2 // 2, image=self._play_frames[0])
-        label = "INSTALLATION…" if self.busy else g["play"]
+        label = self.T("installing") if self.busy else self.T("play")
         c.create_text(cx + pw2 // 2, py0 + ph2 // 2, text=label,
                       fill="#06140C", font=self.F(13, True))
         gx = cx + cw - 54
@@ -455,6 +678,52 @@ del "%~f0"
         o.update(kv)
         self._save_state(**{"opt_" + g["id"]: o})
 
+    def _draw_lang_menu(self, c, mx, my, mw):
+        """liste déroulante des 7 langues."""
+        mw = 150
+        rowh = 30
+        mh = rowh * len(LANGS) + 10
+        mx = W - mw - 18
+        c.create_image(mx + mw // 2, my + mh // 2,
+                       image=self._flat("langmenu", mw, mh, (16, 22, 26, 250), radius=12))
+        self._lang_rows = []
+        for i, (code, name, flag) in enumerate(LANGS):
+            ry = my + 5 + i * rowh
+            sel = code == self.lang
+            hov = self.hover == ("lang", code)
+            if sel or hov:
+                c.create_image(mx + mw // 2, ry + rowh // 2,
+                               image=self._flat("langrow" + code + ("s" if sel else "h"),
+                                                mw - 10, rowh - 2,
+                                                self._hex(GAMES[self.selected]["accent"]) + (40,) if sel
+                                                else (255, 255, 255, 18), radius=8))
+            c.create_text(mx + 22, ry + rowh // 2, text=flag, font=(self.FONT, 13))
+            c.create_text(mx + 42, ry + rowh // 2, anchor="w", text=name,
+                          fill="#EAF6EF" if (sel or hov) else "#B8C8BE", font=self.F(9, True))
+            self._lang_rows.append((mx, ry, mx + mw, ry + rowh, code))
+
+    def _draw_studio_tooltip(self, c):
+        """bulle au survol du logo studio : rôle + bouton Voir le site."""
+        tw, th = 236, 92
+        tx, ty = 20, H - 46 - th - 10
+        c.create_image(tx + tw // 2, ty + th // 2,
+                       image=self._flat("stt", tw, th, (16, 22, 26, 248), radius=14))
+        c.create_image(tx + 26, ty + 24, image=self._load("assets/studio_icon.png", size=(24, 24)))
+        c.create_text(tx + 46, ty + 18, anchor="w", text="Studio Echelon",
+                      fill="#EAF6EF", font=self.F(11, True))
+        c.create_text(tx + 46, ty + 34, anchor="w", text=self.T("studio_role"),
+                      fill="#9AB0A4", font=self.F(8))
+        # bouton Voir le site
+        bx0, by0, bw, bh = tx + 14, ty + th - 34, tw - 28, 24
+        self._site_zone = (bx0, by0, bx0 + bw, by0 + bh)
+        site_hov = self.hover == "studio_site"
+        c.create_image(bx0 + bw // 2, by0 + bh // 2,
+                       image=self._flat("stsite" + ("_h" if site_hov else ""), bw, bh,
+                                        self._hex("#5AE68C") + (255,) if site_hov else (34, 46, 40, 255),
+                                        radius=10))
+        c.create_text(bx0 + bw // 2, by0 + bh // 2, text="🌐  " + self.T("see_site"),
+                      fill="#06140C" if site_hov else "#DCE8E0", font=self.F(9, True))
+
     def _dim_overlay(self):
         if "dim" not in self._img_cache:
             self._img_cache["dim"] = ImageTk.PhotoImage(
@@ -484,9 +753,9 @@ del "%~f0"
 
         # en-tête : mini logo + titre
         c.create_image(px + 44, py + 40, image=self._load(g["logo"], size=(56, 38)))
-        c.create_text(px + 82, py + 32, anchor="w", text="OPTIONS",
+        c.create_text(px + 82, py + 32, anchor="w", text=self.T("options"),
                       fill="#EAF6EF", font=self.F(14, True))
-        c.create_text(px + 82, py + 52, anchor="w", text=f"réglages propres à {g['name']}",
+        c.create_text(px + 82, py + 52, anchor="w", text=self.T("opt_sub", n=g["name"]),
                       fill="#7A948A", font=self.F(8))
 
         rows_y = py + 92
@@ -499,9 +768,9 @@ del "%~f0"
 
         # ── RAM
         y0 = rows_y
-        c.create_text(lx, y0 + 14, anchor="w", text="Mémoire allouée",
+        c.create_text(lx, y0 + 14, anchor="w", text=self.T("ram"),
                       fill="#DCE8E0", font=self.F(10, True))
-        c.create_text(lx, y0 + 30, anchor="w", text="RAM réservée au jeu",
+        c.create_text(lx, y0 + 30, anchor="w", text=self.T("ram_sub"),
                       fill="#6A7E74", font=self.F(8))
         self._ram_minus = (rx - 118, y0 + 8, rx - 88, y0 + 36)
         self._ram_plus = (rx - 30, y0 + 8, rx, y0 + 36)
@@ -516,9 +785,9 @@ del "%~f0"
 
         # ── Rich Presence
         y1 = rows_y + row_h
-        c.create_text(lx, y1 + 14, anchor="w", text="Discord Rich Presence",
+        c.create_text(lx, y1 + 14, anchor="w", text=self.T("rpc"),
                       fill="#DCE8E0", font=self.F(10, True))
-        c.create_text(lx, y1 + 30, anchor="w", text="affiche ta partie sur ton profil Discord",
+        c.create_text(lx, y1 + 30, anchor="w", text=self.T("rpc_sub"),
                       fill="#6A7E74", font=self.F(8), width=pw - 140)
         self._rpc_zone = (rx - 50, y1 + 9, rx, y1 + 35)
         self._toggle(c, self._rpc_zone, o.get("rpc", True), acc)
@@ -526,9 +795,9 @@ del "%~f0"
 
         # ── fermeture auto
         y2 = rows_y + row_h * 2
-        c.create_text(lx, y2 + 14, anchor="w", text="Fermer au lancement",
+        c.create_text(lx, y2 + 14, anchor="w", text=self.T("close"),
                       fill="#DCE8E0", font=self.F(10, True))
-        c.create_text(lx, y2 + 30, anchor="w", text="le launcher se ferme quand le jeu démarre",
+        c.create_text(lx, y2 + 30, anchor="w", text=self.T("close_sub"),
                       fill="#6A7E74", font=self.F(8), width=pw - 140)
         self._close_zone = (rx - 50, y2 + 9, rx, y2 + 35)
         self._toggle(c, self._close_zone, o.get("close", False), acc)
@@ -536,7 +805,7 @@ del "%~f0"
 
         # ── dossier du jeu
         y3 = rows_y + row_h * 3
-        c.create_text(lx, y3 + 14, anchor="w", text="Dossier du jeu",
+        c.create_text(lx, y3 + 14, anchor="w", text=self.T("folder"),
                       fill="#DCE8E0", font=self.F(10, True))
         path = g["dir"]
         if len(path) > 34:
@@ -546,7 +815,7 @@ del "%~f0"
         self._folder_zone = (rx - 92, y3 + 8, rx, y3 + 36)
         c.create_image((rx - 92 + rx) // 2, y3 + 22,
                        image=self._flat("folder", 92, 28, (32, 42, 38, 255), radius=10))
-        c.create_text((rx - 92 + rx) // 2, y3 + 22, text="OUVRIR",
+        c.create_text((rx - 92 + rx) // 2, y3 + 22, text=self.T("open"),
                       fill="#DCE8E0", font=self.F(9, True))
 
         # ── fermer (accent)
@@ -554,7 +823,7 @@ del "%~f0"
         c.create_image(px + pw // 2, py + ph - 41,
                        image=self._flat("optclose" + g["id"], 148, 34,
                                         self._hex(acc) + (255,), radius=12))
-        c.create_text(px + pw // 2, py + ph - 41, text="TERMINÉ",
+        c.create_text(px + pw // 2, py + ph - 41, text=self.T("done"),
                       fill="#06140C", font=self.F(10, True))
 
     # ── interactions ──────────────────────────────────────────────────
@@ -575,6 +844,22 @@ del "%~f0"
 
     def _click(self, e):
         g = GAMES[self.selected]
+        if self.lang_open:   # menu langue ouvert : capte tout
+            picked = None
+            for (x0, y0, x1, y1, code) in getattr(self, "_lang_rows", []):
+                if x0 <= e.x <= x1 and y0 <= e.y <= y1:
+                    picked = code
+                    break
+            if picked:
+                self.lang = picked
+                self._save_state(lang=picked)
+            self.lang_open = False
+            self._draw()
+            return
+        if self._hit(self._lang_zone, e.x, e.y):
+            self.lang_open = True
+            self._draw()
+            return
         if self.options_open:   # modal : tout passe par le panneau
             if self._hit(self._ram_minus, e.x, e.y):
                 self._set_opt(g, ram=max(2, self._opts(g).get("ram", 3) - 1))
@@ -613,26 +898,55 @@ del "%~f0"
             self._draw()
         elif self._hit(self._discord_zone, e.x, e.y):
             webbrowser.open(GAMES[self.selected]["discord"])
+        elif hasattr(self, "_site_zone") and self.hover == "studio_site" \
+                and self._hit(self._site_zone, e.x, e.y):
+            webbrowser.open("https://studioechelon.fr")
 
     def _motion(self, e):
         prev = self.hover
         self.hover = None
-        if self._hit(self._play_zone, e.x, e.y):
+        if self.lang_open:   # menu langue : hover des lignes
+            for (x0, y0, x1, y1, code) in getattr(self, "_lang_rows", []):
+                if x0 <= e.x <= x1 and y0 <= e.y <= y1:
+                    self.hover = ("lang", code)
+                    break
+            if not self._hit(self._lang_zone, e.x, e.y):
+                pass
+            self.configure(cursor="hand2" if self.hover else "")
+            if prev != self.hover:
+                self._draw()
+            return
+        # le bouton du site a priorité (le tooltip est ouvert dessus)
+        if hasattr(self, "_site_zone") and isinstance(prev, str) and prev.startswith("studio") \
+                and self._hit(self._site_zone, e.x, e.y):
+            self.hover = "studio_site"
+        elif self._hit(self._play_zone, e.x, e.y):
             self.hover = "play"
         elif self._hit(self._gear_zone, e.x, e.y):
             self.hover = "gear"
+        elif self._hit(self._lang_zone, e.x, e.y):
+            self.hover = "lang"
         elif self._hit(self._discord_zone, e.x, e.y):
             self.hover = "discord"
+        elif self._hit(self._studio_zone, e.x, e.y) \
+                or (isinstance(prev, str) and prev.startswith("studio")
+                    and hasattr(self, "_site_zone")
+                    and self._hit((self._studio_zone[0], self._site_zone[1] - 12,
+                                   self._site_zone[2], self._studio_zone[3]), e.x, e.y)):
+            self.hover = "studio"
         else:
             for (x0, y0, x1, y1, i) in self._logo_zones:
                 if x0 <= e.x <= x1 and y0 <= e.y <= y1:
                     self.hover = ("logo", i)
                     break
         self.configure(cursor="hand2" if self.hover else "")
-        # les logos + discord changent d'état par redraw (pas d'anim continue dessus)
+        # les logos + discord + studio changent d'état par redraw
         if prev != self.hover and self._fading is None \
                 and (isinstance(prev, tuple) or isinstance(self.hover, tuple)
-                     or "discord" in (prev, self.hover) or "gear" in (prev, self.hover)):
+                     or (isinstance(prev, str) and prev.startswith("studio"))
+                     or (isinstance(self.hover, str) and self.hover.startswith("studio"))
+                     or "discord" in (prev, self.hover) or "gear" in (prev, self.hover)
+                     or "lang" in (prev, self.hover)):
             self._draw()
 
     # ── persistance ───────────────────────────────────────────────────
@@ -679,7 +993,7 @@ del "%~f0"
             self._save_state(pseudo=pseudo)
             os.makedirs(g["dir"], exist_ok=True)
 
-            self.status.set(f"Installation de Minecraft {MC_VERSION} + Fabric…")
+            self.status.set(self.T("installing_mc", v=MC_VERSION))
             mll.fabric.install_fabric(MC_VERSION, g["dir"], callback=self._callbacks())
             fabric_version = None
             for v in mll.utils.get_installed_versions(g["dir"]):
@@ -692,7 +1006,7 @@ del "%~f0"
             try:
                 java = mll.runtime.get_executable_path(JAVA_RUNTIME, g["dir"])
                 if java is None:
-                    self.status.set("Installation de Java 21 (Mojang)…")
+                    self.status.set(self.T("installing_java"))
                     mll.runtime.install_jvm_runtime(JAVA_RUNTIME, g["dir"], callback=self._callbacks())
                     java = mll.runtime.get_executable_path(JAVA_RUNTIME, g["dir"])
             except Exception:
@@ -709,7 +1023,7 @@ del "%~f0"
             json.dump({"rich_presence": self._opts(g).get("rpc", True)},
                       open(os.path.join(cfg_dir, "echelon-launcher.json"), "w"))
 
-            self.status.set("Lancement de " + g["name"] + "…")
+            self.status.set(self.T("launching", n=g["name"]))
             o = self._opts(g)
             options = {
                 "username": pseudo,
@@ -721,7 +1035,7 @@ del "%~f0"
                 options["executablePath"] = java
             cmd = mll.command.get_minecraft_command(fabric_version, g["dir"], options)
             self.progress_val.set(100)
-            self.status.set("Bon jeu ! (tu peux fermer le launcher)")
+            self.status.set(self.T("have_fun"))
             subprocess.Popen(cmd, cwd=g["dir"])
             if o.get("close", False):
                 self.after(1500, self.destroy)
