@@ -174,6 +174,33 @@ TR = {
                     "es": "Descargando {n}…", "de": "Lade {n} herunter…",
                     "pt": "Baixando {n}…", "it": "Scaricamento di {n}…",
                     "ru": "Загрузка {n}…"},
+    "skin": {"fr": "Skin du joueur", "en": "Player skin", "es": "Skin del jugador",
+             "de": "Spieler-Skin", "pt": "Skin do jogador", "it": "Skin del giocatore",
+             "ru": "Скин игрока"},
+    "skin_sub": {"fr": "visible par tous les joueurs en jeu", "en": "visible to every player in game",
+                 "es": "visible para todos en el juego", "de": "für alle Spieler sichtbar",
+                 "pt": "visível para todos no jogo", "it": "visibile a tutti in gioco",
+                 "ru": "виден всем игрокам"},
+    "change": {"fr": "CHANGER", "en": "CHANGE", "es": "CAMBIAR", "de": "ÄNDERN",
+               "pt": "MUDAR", "it": "CAMBIA", "ru": "СМЕНИТЬ"},
+    "skin_premium": {"fr": "Depuis un pseudo Minecraft premium", "en": "From a premium Minecraft username",
+                     "es": "Desde un usuario premium", "de": "Von einem Premium-Namen",
+                     "pt": "De um nick premium", "it": "Da un nickname premium",
+                     "ru": "По нику premium-аккаунта"},
+    "import": {"fr": "IMPORTER", "en": "IMPORT", "es": "IMPORTAR", "de": "IMPORTIEREN",
+               "pt": "IMPORTAR", "it": "IMPORTA", "ru": "ИМПОРТ"},
+    "skin_file": {"fr": "OU CHOISIR UN FICHIER…", "en": "OR PICK A FILE…", "es": "O ELEGIR ARCHIVO…",
+                  "de": "ODER DATEI WÄHLEN…", "pt": "OU ESCOLHER ARQUIVO…", "it": "O SCEGLI UN FILE…",
+                  "ru": "ИЛИ ВЫБРАТЬ ФАЙЛ…"},
+    "skin_ok": {"fr": "Skin appliqué !", "en": "Skin applied!", "es": "¡Skin aplicada!",
+                "de": "Skin angewendet!", "pt": "Skin aplicada!", "it": "Skin applicata!",
+                "ru": "Скин применён!"},
+    "skin_err": {"fr": "Introuvable — pseudo premium ?", "en": "Not found — premium name?",
+                 "es": "No encontrado", "de": "Nicht gefunden", "pt": "Não encontrado",
+                 "it": "Non trovato", "ru": "Не найден"},
+    "skin_none": {"fr": "Aucun skin — Steve par défaut", "en": "No skin — default Steve",
+                  "es": "Sin skin", "de": "Kein Skin", "pt": "Sem skin", "it": "Nessuna skin",
+                  "ru": "Нет скина"},
     "have_fun": {"fr": "Bon jeu ! (tu peux fermer le launcher)",
                  "en": "Have fun! (you can close the launcher)",
                  "es": "¡Diviértete! (puedes cerrar el launcher)",
@@ -360,6 +387,10 @@ class Hub(tk.Tk):
             self.lang = "fr"
         self.lang_open = False
         self.options_open = False
+        self.skin_open = False
+        self.skin_input = ""
+        self.skin_focus = False
+        self.skin_status = ""
         self.status = tk.StringVar(value="")
         self.progress_val = tk.DoubleVar(value=0)
         self.busy = False
@@ -809,6 +840,8 @@ del "%~f0"
 
         if self.options_open:
             self._draw_options(c, g)
+        if self.skin_open:
+            self._draw_skin(c, g)
 
         # progression + statut
         bw3, bh3 = cw, 5
@@ -969,12 +1002,165 @@ del "%~f0"
         c.create_text((rx - 92 + rx) // 2, y3 + 22, text=self.T("open"),
                       fill="#DCE8E0", font=self.F(9, True))
 
+        # ── skin
+        y4 = rows_y + row_h * 4
+        c.create_text(lx, y4 + 14, anchor="w", text=self.T("skin"),
+                      fill="#DCE8E0", font=self.F(10, True))
+        c.create_text(lx, y4 + 30, anchor="w", text=self.T("skin_sub"),
+                      fill="#6A7E74", font=self.F(8))
+        self._optskin_zone = (rx - 100, y4 + 8, rx, y4 + 36)
+        c.create_image((rx - 100 + rx) // 2, y4 + 22,
+                       image=self._flat("optskin", 100, 28, (32, 42, 38, 255), radius=10))
+        c.create_text((rx - 100 + rx) // 2, y4 + 22, text=self.T("change"),
+                      fill="#DCE8E0", font=self.F(9, True))
+
         # ── fermer (accent)
         self._optclose_zone = (px + pw // 2 - 74, py + ph - 58, px + pw // 2 + 74, py + ph - 24)
         c.create_image(px + pw // 2, py + ph - 41,
                        image=self._flat("optclose" + g["id"], 148, 34,
                                         self._hex(acc) + (255,), radius=12))
         c.create_text(px + pw // 2, py + ph - 41, text=self.T("done"),
+                      fill="#06140C", font=self.F(10, True))
+
+    # ── skins : partagé entre les jeux (StudioEchelon/skin.png) ───────
+    def _skin_path(self):
+        return os.path.join(game_root("StudioEchelon"), "skin.png")
+
+    def _skin_meta(self):
+        try:
+            return json.load(open(self._skin_path() + ".json"))
+        except Exception:
+            return {}
+
+    def _fetch_skin(self, name):
+        """récupère le skin d'un compte premium via l'API Mojang."""
+        import urllib.request, base64
+        try:
+            req = urllib.request.Request(
+                "https://api.mojang.com/users/profiles/minecraft/" + name,
+                headers={"User-Agent": "echelon-client"})
+            uid = json.load(urllib.request.urlopen(req, timeout=8))["id"]
+            req = urllib.request.Request(
+                "https://sessionserver.mojang.com/session/minecraft/profile/" + uid,
+                headers={"User-Agent": "echelon-client"})
+            prof = json.load(urllib.request.urlopen(req, timeout=8))
+            tex = json.loads(base64.b64decode(prof["properties"][0]["value"]))["textures"]
+            url = tex["SKIN"]["url"]
+            slim = tex["SKIN"].get("metadata", {}).get("model") == "slim"
+            req = urllib.request.Request(url, headers={"User-Agent": "echelon-client"})
+            data = urllib.request.urlopen(req, timeout=15).read()
+            self._set_skin(data, slim)
+            self.skin_status = self.T("skin_ok")
+            logging.info("skin importé depuis %s (slim=%s)", name, slim)
+        except Exception:
+            self.skin_status = self.T("skin_err")
+        self.after(0, self._draw)
+
+    def _set_skin(self, png_bytes, slim):
+        import io
+        im = Image.open(io.BytesIO(png_bytes)).convert("RGBA")
+        if im.size == (64, 32):   # vieux format → conversion 64x64
+            new = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
+            new.paste(im, (0, 0))
+            im = new
+        if im.size != (64, 64):
+            raise ValueError("format de skin invalide")
+        im.save(self._skin_path())
+        json.dump({"slim": bool(slim)}, open(self._skin_path() + ".json", "w"))
+        # invalide la préview en cache
+        self._img_cache = {k: v for k, v in self._img_cache.items()
+                           if not (isinstance(k, tuple) and k[0] == "skinprev")}
+
+    def _pick_skin_file(self):
+        from tkinter import filedialog
+        f = filedialog.askopenfilename(title="Skin Minecraft (PNG 64x64)",
+                                       filetypes=[("PNG", "*.png")])
+        if not f:
+            return
+        try:
+            self._set_skin(open(f, "rb").read(), False)
+            self.skin_status = self.T("skin_ok")
+        except Exception:
+            self.skin_status = self.T("skin_err")
+        self._draw()
+
+    def _skin_preview(self, scale=6):
+        """rendu 2D de face (tête+torse+bras+jambes, calques chapeau inclus)."""
+        try:
+            mtime = int(os.path.getmtime(self._skin_path()))
+        except Exception:
+            return None
+        key = ("skinprev", mtime, scale)
+        if key in self._img_cache:
+            return self._img_cache[key]
+        sk = Image.open(self._skin_path()).convert("RGBA")
+        out = Image.new("RGBA", (16, 32), (0, 0, 0, 0))
+        out.paste(sk.crop((8, 8, 16, 16)), (4, 0))                    # tête
+        hat = sk.crop((40, 8, 48, 16))
+        out.paste(hat, (4, 0), hat)                                   # chapeau
+        out.paste(sk.crop((20, 20, 28, 32)), (4, 8))                  # torse
+        out.paste(sk.crop((44, 20, 48, 32)), (0, 8))                  # bras D
+        out.paste(sk.crop((36, 52, 40, 64)), (12, 8))                 # bras G
+        out.paste(sk.crop((4, 20, 8, 32)), (4, 20))                   # jambe D
+        out.paste(sk.crop((20, 52, 24, 64)), (8, 20))                 # jambe G
+        out = out.resize((16 * scale, 32 * scale), Image.NEAREST)
+        self._img_cache[key] = ImageTk.PhotoImage(out)
+        return self._img_cache[key]
+
+    def _draw_skin(self, c, g):
+        """panneau SKIN : préview + import premium + fichier."""
+        acc = g["accent"]
+        pw, ph = 440, 330
+        px, py = SIDEBAR + (W - SIDEBAR) // 2 - pw // 2, H // 2 - ph // 2
+        c.create_image(0, 0, anchor="nw", image=self._dim_overlay())
+        c.create_image(px + pw // 2, py + ph // 2,
+                       image=self._flat("skinpanel", pw, ph, (13, 18, 21, 248), radius=16))
+        c.create_text(px + 26, py + 30, anchor="w", text=self.T("skin"),
+                      fill="#EAF6EF", font=self.F(13, True))
+        c.create_text(px + 26, py + 50, anchor="w", text=self.T("skin_sub"),
+                      fill="#7A948A", font=self.F(8))
+
+        # préview à gauche
+        prev = self._skin_preview()
+        if prev:
+            c.create_image(px + 88, py + 178, image=prev)
+        else:
+            c.create_text(px + 88, py + 178, text=self.T("skin_none"),
+                          fill="#6A7E74", font=self.F(8), width=110)
+
+        # import premium
+        rx0 = px + 176
+        c.create_text(rx0, py + 92, anchor="w", text=self.T("skin_premium"),
+                      fill="#C8D8CC", font=self.F(9, True))
+        iw2 = pw - (rx0 - px) - 26
+        self._skin_input_zone = (rx0, py + 108, rx0 + iw2, py + 144)
+        c.create_image(rx0 + iw2 // 2, py + 126,
+                       image=self._flat("skininput", iw2, 36, (10, 15, 17, 255), radius=12))
+        self._skin_input_item = c.create_text(rx0 + iw2 // 2, py + 126,
+                                              text=self.skin_input or ("|" if self.skin_focus else "Notch"),
+                                              fill="#EAF6EF" if self.skin_input else "#4A5E54",
+                                              font=self.F(11, True))
+        self._skin_import_zone = (rx0, py + 156, rx0 + iw2, py + 192)
+        c.create_image(rx0 + iw2 // 2, py + 174,
+                       image=self._flat("skinimp" + g["id"], iw2, 36, self._hex(acc) + (255,), radius=12))
+        c.create_text(rx0 + iw2 // 2, py + 174, text=self.T("import"),
+                      fill="#06140C", font=self.F(10, True))
+
+        # fichier local
+        self._skin_file_zone = (rx0, py + 204, rx0 + iw2, py + 240)
+        c.create_image(rx0 + iw2 // 2, py + 222,
+                       image=self._flat("skinfile", iw2, 36, (32, 42, 38, 255), radius=12))
+        c.create_text(rx0 + iw2 // 2, py + 222, text=self.T("skin_file"),
+                      fill="#DCE8E0", font=self.F(9, True))
+
+        if self.skin_status:
+            c.create_text(rx0 + iw2 // 2, py + 258, text=self.skin_status,
+                          fill=acc, font=self.F(9))
+
+        self._skinclose_zone = (px + pw // 2 - 74, py + ph - 56, px + pw // 2 + 74, py + ph - 22)
+        c.create_image(px + pw // 2, py + ph - 39,
+                       image=self._flat("skinclose" + g["id"], 148, 34, self._hex(acc) + (255,), radius=12))
+        c.create_text(px + pw // 2, py + ph - 39, text=self.T("done"),
                       fill="#06140C", font=self.F(10, True))
 
     # ── interactions ──────────────────────────────────────────────────
@@ -986,6 +1172,21 @@ del "%~f0"
 
     def _key(self, e):
         """saisie du pseudo, gérée à la main (champ canvas). Sauvegarde en direct."""
+        if self.skin_open and self.skin_focus:
+            if e.keysym == "BackSpace":
+                self.skin_input = self.skin_input[:-1]
+            elif e.keysym in ("Return",):
+                if self.skin_input.strip():
+                    self.skin_status = "…"
+                    threading.Thread(target=self._fetch_skin,
+                                     args=(self.skin_input.strip(),), daemon=True).start()
+            elif e.keysym == "underscore" and len(self.skin_input) < 16:
+                self.skin_input += "_"
+            elif e.char and e.char in self._PSEUDO_OK and len(self.skin_input) < 16:
+                self.skin_input += e.char
+            self.canvas.itemconfig(self._skin_input_item, text=self.skin_input or "|",
+                                   fill="#EAF6EF" if self.skin_input else "#4A5E54")
+            return
         if not self.pseudo_focus:
             return
         if e.keysym == "BackSpace":
@@ -1035,6 +1236,10 @@ del "%~f0"
                     subprocess.Popen(["open", g["dir"]])
                 else:
                     subprocess.Popen(["xdg-open", g["dir"]])
+            elif self._hit(self._optskin_zone, e.x, e.y):
+                self.options_open = False
+                self.skin_open = True
+                self.skin_status = ""
             elif self._hit(self._optclose_zone, e.x, e.y):
                 self.options_open = False
             self._draw()
@@ -1189,6 +1394,11 @@ del "%~f0"
             os.makedirs(cfg_dir, exist_ok=True)
             json.dump({"rich_presence": self._opts(g).get("rpc", True)},
                       open(os.path.join(cfg_dir, "echelon-launcher.json"), "w"))
+            sp = self._skin_path()
+            if os.path.exists(sp):
+                shutil.copy(sp, os.path.join(cfg_dir, "echelon-skin.png"))
+                meta = self._skin_meta()
+                json.dump(meta, open(os.path.join(cfg_dir, "echelon-skin.json"), "w"))
 
             self.status.set(self.T("launching", n=g["name"]))
             o = self._opts(g)
