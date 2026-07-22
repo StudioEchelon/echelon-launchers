@@ -33,7 +33,13 @@
      "Proximity voice, emotes, clans"
     ]
    },
-   "discord": "https://playechelon.net"
+   "discord": "https://playechelon.net",
+   "extra": [
+    {
+     "channel": "echelonskin",
+     "file": "echelonskin.jar"
+    }
+   ]
   },
   {
    "id": "donshot",
@@ -71,7 +77,13 @@
      "Chests, cards, the Don Road"
     ]
    },
-   "discord": "https://playechelon.net"
+   "discord": "https://playechelon.net",
+   "extra": [
+    {
+     "channel": "echelonskin",
+     "file": "echelonskin.jar"
+    }
+   ]
   }
  ]
 }

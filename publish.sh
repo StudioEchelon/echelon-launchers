@@ -14,7 +14,7 @@ VER=${3:-$(date +%Y.%m.%d.%H%M)}
 case $GAME in
   harbor)  EXE=HarborLauncher.exe ;;
   donshot) EXE=DonShotLauncher.exe ;;
-  *) echo "jeu inconnu: $GAME"; exit 1 ;;
+  *)       EXE="" ;;   # canal générique (echelonskin, futurs mods communs)
 esac
 
 SHA=$(shasum -a 256 "$JAR" | cut -d' ' -f1)

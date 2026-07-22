@@ -27,7 +27,7 @@ JAVA_RUNTIME = "java-runtime-delta"
 RELEASES = "https://github.com/StudioEchelon/echelon-launchers/releases/download"
 BG = "#0A0C0E"
 FADE_STEPS = 7
-CLIENT_VERSION = "1.1"
+CLIENT_VERSION = "1.2"
 CLIENT_BASE = RELEASES + "/client"   # manifest.json + StudioEchelonClient.exe
 
 
@@ -235,6 +235,7 @@ DEFAULT_GAMES = [
         "seed": "harbor:",
         "deps": {"fabric-api": "fabric-api", "sodium": "sodium", "lithium": "lithium"},
         "purge": [],
+        "extra": [{"channel": "echelonskin", "file": "echelonskin.jar"}],
         "server": "144.217.79.184:25569",
         "news": {"fr": ["Ton raft navigue au vent, océan vivant",
                         "10 donjons pirates, Kraken, Sans-Tête",
@@ -269,6 +270,7 @@ DEFAULT_GAMES = [
                  "lithium": "lithium", "notenoughanimations": "not-enough-animations",
                  "PresenceFootsteps": "presence-footsteps"},
         "purge": ["firstperson"],
+        "extra": [{"channel": "echelonskin", "file": "echelonskin.jar"}],
         "server": "66.70.176.150:25567",
         "news": {"fr": ["35 héros uniques, armes 3D et ultis",
                         "Duels contre bots, ligues et trophées",
@@ -315,6 +317,7 @@ def _normalize(entry):
     g["mod_file"] = entry.get("mod_file", gid + ".jar")
     g["deps"] = entry.get("deps", {"fabric-api": "fabric-api", "sodium": "sodium", "lithium": "lithium"})
     g["purge"] = entry.get("purge", [])
+    g["extra"] = entry.get("extra", [])
     g["accent_dim"] = entry.get("accent_dim", entry["accent"])
     # assets : URL distante (cache local) sinon chemin embarqué
     for k, urlk in (("logo", "logo_url"), ("bg", "bg_url")):
@@ -1459,32 +1462,40 @@ del "%~f0"
         os.replace(tmp, dest)
         logging.info("téléchargé %s (%d octets)", url, os.path.getsize(dest))
 
-    def _sync_mod(self, g, mods):
-        """bootstrap : jar du mod depuis le canal GitHub (sha256 vérifié)."""
+    def _sync_channel(self, channel, mod_file, label, mods, required):
+        """synchronise un canal GitHub (manifest + jar, sha256 vérifié)."""
         import urllib.request, hashlib
-        target = os.path.join(mods, g["mod_file"])
+        base = RELEASES + "/" + channel
+        target = os.path.join(mods, mod_file)
         manifest = None
         try:
-            req = urllib.request.Request(g["base"] + "/manifest.json",
+            req = urllib.request.Request(base + "/manifest.json",
                                          headers={"User-Agent": "echelon-client"})
             manifest = json.load(urllib.request.urlopen(req, timeout=8))
         except Exception:
             pass
         if manifest:
             want = manifest.get("mod_version", "")
-            have = self._state().get("mod_" + g["id"], "")
+            have = self._state().get("mod_" + channel, "")
             if want != have or not os.path.exists(target):
-                logging.info("maj mod %s : %s -> %s", g["id"], have, want)
-                self._download(g["base"] + "/" + manifest.get("mod_file", g["mod_file"]),
-                               target + ".new", label=g["name"] + " " + str(want))
+                logging.info("maj %s : %s -> %s", channel, have, want)
+                self._download(base + "/" + manifest.get("mod_file", mod_file),
+                               target + ".new", label=f"{label} {want}")
                 sha = hashlib.sha256(open(target + ".new", "rb").read()).hexdigest()
                 if manifest.get("mod_sha256") and sha != manifest["mod_sha256"]:
                     os.remove(target + ".new")
-                    raise RuntimeError("Mod corrompu (sha256) — réessaie.")
+                    raise RuntimeError("Fichier corrompu (sha256) — réessaie.")
                 shutil.move(target + ".new", target)
-                self._save_state(**{"mod_" + g["id"]: want})
-        elif not os.path.exists(target):
+                self._save_state(**{"mod_" + channel: want})
+        elif required and not os.path.exists(target):
             raise RuntimeError("Pas de connexion pour télécharger le jeu.")
+
+    def _sync_mod(self, g, mods):
+        """mod principal + mods annexes (EchelonSkin…) du jeu."""
+        self._sync_channel(g["base"].rsplit("/", 1)[1], g["mod_file"], g["name"], mods, True)
+        for ex in g.get("extra", []):
+            self._check_cancel()
+            self._sync_channel(ex["channel"], ex["file"], ex["channel"], mods, False)
 
     def _ensure_deps(self, g, mods):
         import urllib.request
