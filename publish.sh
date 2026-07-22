@@ -20,12 +20,14 @@ esac
 SHA=$(shasum -a 256 "$JAR" | cut -d' ' -f1)
 TMP=$(mktemp -d)
 cp "$JAR" "$TMP/$GAME.jar"
+# préserve launcher_version/url du manifest existant (ne JAMAIS l'écraser)
+LV=$(curl -sL "https://github.com/StudioEchelon/echelon-launchers/releases/download/$GAME/manifest.json"      | python3 -c "import json,sys;print(json.load(sys.stdin).get('launcher_version','1.1'))" 2>/dev/null || echo "1.1")
 cat > "$TMP/manifest.json" <<EOF
 {
   "mod_version": "$VER",
   "mod_file": "$GAME.jar",
   "mod_sha256": "$SHA",
-  "launcher_version": "1.1",
+  "launcher_version": "$LV",
   "launcher_url_win": "https://github.com/StudioEchelon/echelon-launchers/releases/download/$GAME/$EXE"
 }
 EOF
