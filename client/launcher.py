@@ -27,13 +27,40 @@ JAVA_RUNTIME = "java-runtime-delta"
 RELEASES = "https://github.com/StudioEchelon/echelon-launchers/releases/download"
 BG = "#0A0C0E"
 FADE_STEPS = 7
-CLIENT_VERSION = "1.0"
+CLIENT_VERSION = "1.1"
 CLIENT_BASE = RELEASES + "/client"   # manifest.json + StudioEchelonClient.exe
 
 
 def resource(name):
     base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
     return os.path.join(base, name)
+
+
+# ── journal : StudioEchelon/launcher.log (diagnostic joueurs) ─────────
+import logging
+
+
+def setup_log():
+    try:
+        d = game_root("StudioEchelon")
+        os.makedirs(d, exist_ok=True)
+        path = os.path.join(d, "launcher.log")
+        if os.path.exists(path) and os.path.getsize(path) > 512 * 1024:
+            os.replace(path, path + ".old")   # rotation simple
+        logging.basicConfig(filename=path, level=logging.INFO,
+                            format="%(asctime)s %(levelname)s %(message)s")
+        logging.info("=== Studio Echelon Client v%s — %s ===",
+                     CLIENT_VERSION, platform.platform())
+    except Exception:
+        pass
+
+
+def GT(g, key, lang, default=""):
+    """champ de catalogue traduisible : dict {lang: …} ou valeur brute."""
+    v = g.get(key, default)
+    if isinstance(v, dict):
+        return v.get(lang) or v.get("fr") or next(iter(v.values()), default)
+    return v
 
 
 def game_root(name):
@@ -133,6 +160,20 @@ TR = {
     "launching": {"fr": "Lancement de {n}…", "en": "Launching {n}…", "es": "Iniciando {n}…",
                   "de": "Starte {n}…", "pt": "Iniciando {n}…", "it": "Avvio di {n}…",
                   "ru": "Запуск {n}…"},
+    "cancel": {"fr": "ANNULER", "en": "CANCEL", "es": "CANCELAR", "de": "ABBRECHEN",
+               "pt": "CANCELAR", "it": "ANNULLA", "ru": "ОТМЕНА"},
+    "cancelled": {"fr": "Annulé.", "en": "Cancelled.", "es": "Cancelado.", "de": "Abgebrochen.",
+                  "pt": "Cancelado.", "it": "Annullato.", "ru": "Отменено."},
+    "offline": {"fr": "Hors ligne", "en": "Offline", "es": "Desconectado", "de": "Offline",
+                "pt": "Offline", "it": "Offline", "ru": "Не в сети"},
+    "players": {"fr": "en ligne", "en": "online", "es": "en línea", "de": "online",
+                "pt": "online", "it": "online", "ru": "в сети"},
+    "news": {"fr": "NOUVEAUTÉS", "en": "NEWS", "es": "NOVEDADES", "de": "NEUIGKEITEN",
+             "pt": "NOVIDADES", "it": "NOVITÀ", "ru": "НОВОСТИ"},
+    "downloading": {"fr": "Téléchargement de {n}…", "en": "Downloading {n}…",
+                    "es": "Descargando {n}…", "de": "Lade {n} herunter…",
+                    "pt": "Baixando {n}…", "it": "Scaricamento di {n}…",
+                    "ru": "Загрузка {n}…"},
     "have_fun": {"fr": "Bon jeu ! (tu peux fermer le launcher)",
                  "en": "Have fun! (you can close the launcher)",
                  "es": "¡Diviértete! (puedes cerrar el launcher)",
@@ -167,6 +208,15 @@ DEFAULT_GAMES = [
         "seed": "harbor:",
         "deps": {"fabric-api": "fabric-api", "sodium": "sodium", "lithium": "lithium"},
         "purge": [],
+        "server": "144.217.79.184:25569",
+        "news": {"fr": ["Ton raft navigue au vent, océan vivant",
+                        "10 donjons pirates, Kraken, Sans-Tête",
+                        "Cartes au trésor, canons, armure Zircon",
+                        "Voix de proximité, emotes, clans"],
+                 "en": ["Your raft sails the wind, living ocean",
+                        "10 pirate dungeons, Kraken, Headless",
+                        "Treasure maps, cannons, Zircon armor",
+                        "Proximity voice, emotes, clans"]},
         "play": "JOUER",
         "discord": "https://playechelon.net",
     },
@@ -192,6 +242,13 @@ DEFAULT_GAMES = [
                  "lithium": "lithium", "notenoughanimations": "not-enough-animations",
                  "PresenceFootsteps": "presence-footsteps"},
         "purge": ["firstperson"],
+        "server": "66.70.176.150:25567",
+        "news": {"fr": ["35 héros uniques, armes 3D et ultis",
+                        "Duels contre bots, ligues et trophées",
+                        "Coffres, cartes, Route du Don"],
+                 "en": ["35 unique heroes, 3D guns and ults",
+                        "Bot duels, leagues and trophies",
+                        "Chests, cards, the Don Road"]},
         "play": "JOUER",
         "discord": "https://playechelon.net",
     },
@@ -306,6 +363,8 @@ class Hub(tk.Tk):
         self.status = tk.StringVar(value="")
         self.progress_val = tk.DoubleVar(value=0)
         self.busy = False
+        self._cancel = False
+        self._online = {}   # id de jeu → nb de joueurs (None = injoignable)
         self._img_cache = {}
         self._fade_cache = {}
         self._fading = None
@@ -324,8 +383,66 @@ class Hub(tk.Tk):
         self.pseudo_focus = False
         self.bind("<Key>", self._key)
 
+        threading.Thread(target=self._ping_loop, daemon=True).start()
         self._draw()
         self.after(FPS_MS, self._tick)
+
+    # ── ping serveurs (Server List Ping, zéro dépendance) ─────────────
+    @staticmethod
+    def _slp(hostport, timeout=3.0):
+        """interroge un serveur MC : nb de joueurs en ligne, ou None."""
+        import socket, struct
+
+        def varint(n):
+            out = b""
+            while True:
+                b7 = n & 0x7F
+                n >>= 7
+                out += bytes([b7 | (0x80 if n else 0)])
+                if not n:
+                    return out
+
+        def read_varint(sock):
+            n = shift = 0
+            while True:
+                b = sock.recv(1)
+                if not b:
+                    raise IOError("eof")
+                n |= (b[0] & 0x7F) << shift
+                if not b[0] & 0x80:
+                    return n
+                shift += 7
+
+        host, _, port = hostport.partition(":")
+        port = int(port or 25565)
+        with socket.create_connection((host, port), timeout=timeout) as sock:
+            sock.settimeout(timeout)
+            addr = host.encode()
+            handshake = varint(0) + varint(767) + varint(len(addr)) + addr + struct.pack(">H", port) + varint(1)
+            sock.sendall(varint(len(handshake)) + handshake + b"\x01\x00")
+            read_varint(sock)            # taille du paquet
+            read_varint(sock)            # id
+            ln = read_varint(sock)       # taille du JSON
+            data = b""
+            while len(data) < ln:
+                chunk = sock.recv(ln - len(data))
+                if not chunk:
+                    break
+                data += chunk
+            st = json.loads(data.decode("utf-8", "replace"))
+            return int(st.get("players", {}).get("online", 0))
+
+    def _ping_loop(self):
+        import time
+        while True:
+            for g in list(GAMES):
+                if not g.get("server"):
+                    continue
+                try:
+                    self._online[g["id"]] = self._slp(g["server"])
+                except Exception:
+                    self._online[g["id"]] = None
+            time.sleep(45)
 
     def _self_update(self):
         """remplace le hub par une version plus récente publiée sur le canal client.
@@ -494,9 +611,16 @@ del "%~f0"
             c.coords(self._sel_logo_item, SIDEBAR // 2 + 6, base_y)
 
         if hasattr(self, "_dot_item"):
-            bright = 0.55 + 0.45 * (0.5 + 0.5 * math.sin(self.t * 4.5))
-            g = int(0x5A + (0xFF - 0x5A) * bright * 0.4)
-            c.itemconfig(self._dot_item, fill=f"#{int(0x2A * bright):02x}{g:02x}{int(0x55 + 0x30 * bright):02x}")
+            lbl, lcol = self._online_label(GAMES[self.selected])
+            if lcol == "#5AE68C":   # en ligne : le point pulse
+                bright = 0.55 + 0.45 * (0.5 + 0.5 * math.sin(self.t * 4.5))
+                g = int(0x5A + (0xFF - 0x5A) * bright * 0.4)
+                lcol = f"#{int(0x2A * bright):02x}{g:02x}{int(0x55 + 0x30 * bright):02x}"
+                c.itemconfig(self._dot_item, fill=lcol)
+                c.itemconfig(self._online_item, text=lbl, fill="#5AE68C")
+            else:
+                c.itemconfig(self._dot_item, fill=lcol)
+                c.itemconfig(self._online_item, text=lbl, fill=lcol)
 
         # hover JOUER : fondu
         if hasattr(self, "_play_item"):
@@ -536,6 +660,17 @@ del "%~f0"
             c.itemconfig(item, fill=acc if i % 3 == 0 else "#C8D8CC")
 
         self.after(FPS_MS, self._tick)
+
+    def _online_label(self, g):
+        """(texte, couleur) du statut serveur : joueurs en ligne / hors ligne."""
+        if not g.get("server"):
+            return self.T("online"), "#5AE68C"
+        n = self._online.get(g["id"], "…")
+        if n is None:
+            return self.T("offline"), "#7A8A84"
+        if n == "…":
+            return self.T("online"), "#5AE68C"
+        return f"{n} {self.T('players')}", "#5AE68C"
 
     # ── dessin ────────────────────────────────────────────────────────
     def _select(self, idx):
@@ -600,6 +735,21 @@ del "%~f0"
         if self.lang_open:
             self._draw_lang_menu(c, lx, ly + lh + 6, lw)
 
+        # ── news du jeu (catalogue distant → modifiable sans rebuild)
+        news = GT(g, "news", self.lang, [])
+        if news:
+            news = news[:4]
+            nw, nh = 350, 40 + 18 * len(news)
+            nx, ny = SIDEBAR + 34, H - nh - 34
+            c.create_image(nx + nw // 2, ny + nh // 2,
+                           image=self._flat("news" + g["id"] + str(len(news)), nw, nh,
+                                            (10, 15, 17, 205), radius=16))
+            c.create_text(nx + 18, ny + 17, anchor="w", text=self.T("news"),
+                          fill=accent, font=self.F(9, True))
+            for i, line in enumerate(news):
+                c.create_text(nx + 18, ny + 40 + i * 18, anchor="w", text="•  " + line,
+                              fill="#C8DCD0", font=self.F(9))
+
         # ── colonne droite : carte info, pseudo, JOUER, progression
         cw = 280
         cx = W - cw - 34
@@ -610,10 +760,11 @@ del "%~f0"
         c.create_image(cx + cw // 2, cy + 58, image=card)
         mini = self._load(g["logo"], size=(82, 54))
         c.create_image(cx + 52, cy + 34, image=mini)
-        self._dot_item = c.create_oval(cx + 112, cy + 20, cx + 120, cy + 28, fill="#5AE68C", width=0)
-        c.create_text(cx + 128, cy + 24, anchor="w", text=self.T("online"),
-                      fill="#5AE68C", font=self.F(10, True))
-        c.create_text(cx + 112, cy + 48, anchor="w", text=g["tagline"][self.lang][:44],
+        lbl, lcol = self._online_label(g)
+        self._dot_item = c.create_oval(cx + 112, cy + 20, cx + 120, cy + 28, fill=lcol, width=0)
+        self._online_item = c.create_text(cx + 128, cy + 24, anchor="w", text=lbl,
+                                          fill=lcol, font=self.F(10, True))
+        c.create_text(cx + 112, cy + 48, anchor="w", text=GT(g, "tagline", self.lang)[:44],
                       fill="#9AB0A4", font=self.F(8), width=156)
         bw2, bh2 = cw - 24, 32
         bx0, by0 = cx + 12, cy + 116 - bh2 - 12
@@ -644,7 +795,7 @@ del "%~f0"
         self._play_zone = (cx, py0, cx + pw2, py0 + ph2)
         self._play_frames = self._btn_frames("play:" + g["id"], pw2, ph2, accent, 12)
         self._play_item = c.create_image(cx + pw2 // 2, py0 + ph2 // 2, image=self._play_frames[0])
-        label = self.T("installing") if self.busy else self.T("play")
+        label = self.T("cancel") if self.busy else self.T("play")
         c.create_text(cx + pw2 // 2, py0 + ph2 // 2, text=label,
                       fill="#06140C", font=self.F(13, True))
         gx = cx + cw - 54
@@ -830,17 +981,24 @@ del "%~f0"
     def _hit(self, zone, x, y):
         return zone[0] <= x <= zone[2] and zone[1] <= y <= zone[3]
 
+    # caractères valides d'un pseudo Minecraft : lettres, chiffres, underscore
+    _PSEUDO_OK = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_")
+
     def _key(self, e):
-        """saisie du pseudo, gérée à la main (champ canvas)."""
+        """saisie du pseudo, gérée à la main (champ canvas). Sauvegarde en direct."""
         if not self.pseudo_focus:
             return
         if e.keysym == "BackSpace":
             self.pseudo_text = self.pseudo_text[:-1]
         elif e.keysym in ("Return", "Escape", "Tab"):
             self.pseudo_focus = False
-        elif e.char and e.char.isprintable() and len(self.pseudo_text) < 16:
+        elif e.keysym == "underscore" and len(self.pseudo_text) < 16:
+            self.pseudo_text += "_"
+        elif e.char and e.char in self._PSEUDO_OK and len(self.pseudo_text) < 16:
             self.pseudo_text += e.char
         self.canvas.itemconfig(self._input_text, text=self.pseudo_text)
+        if self.pseudo_text.strip():
+            self._save_state(pseudo=self.pseudo_text)   # sauvegardé à chaque frappe
 
     def _click(self, e):
         g = GAMES[self.selected]
@@ -892,7 +1050,10 @@ del "%~f0"
         if self.pseudo_focus:
             return
         if self._hit(self._play_zone, e.x, e.y):
-            self._play()
+            if self.busy:
+                self._cancel = True   # annulation demandée
+            else:
+                self._play()
         elif self._hit(self._gear_zone, e.x, e.y):
             self.options_open = True
             self._draw()
@@ -989,12 +1150,15 @@ del "%~f0"
 
     def _play_thread(self, g):
         try:
+            self._cancel = False
             pseudo = (self.pseudo_text.strip() or "Joueur")[:16]
             self._save_state(pseudo=pseudo)
             os.makedirs(g["dir"], exist_ok=True)
+            logging.info("JOUER %s (pseudo=%s)", g["id"], pseudo)
 
             self.status.set(self.T("installing_mc", v=MC_VERSION))
             mll.fabric.install_fabric(MC_VERSION, g["dir"], callback=self._callbacks())
+            self._check_cancel()
             fabric_version = None
             for v in mll.utils.get_installed_versions(g["dir"]):
                 if "fabric" in v["id"] and MC_VERSION in v["id"]:
@@ -1002,15 +1166,18 @@ del "%~f0"
             if not fabric_version:
                 raise RuntimeError("Fabric introuvable après installation")
 
+            # Java PARTAGÉ entre les jeux : téléchargé une seule fois
             java = None
             try:
-                java = mll.runtime.get_executable_path(JAVA_RUNTIME, g["dir"])
+                jroot = game_root("StudioEchelon")
+                java = mll.runtime.get_executable_path(JAVA_RUNTIME, jroot)
                 if java is None:
                     self.status.set(self.T("installing_java"))
-                    mll.runtime.install_jvm_runtime(JAVA_RUNTIME, g["dir"], callback=self._callbacks())
-                    java = mll.runtime.get_executable_path(JAVA_RUNTIME, g["dir"])
+                    mll.runtime.install_jvm_runtime(JAVA_RUNTIME, jroot, callback=self._callbacks())
+                    java = mll.runtime.get_executable_path(JAVA_RUNTIME, jroot)
             except Exception:
                 java = None
+            self._check_cancel()
 
             mods = os.path.join(g["dir"], "mods")
             os.makedirs(mods, exist_ok=True)
@@ -1037,13 +1204,50 @@ del "%~f0"
             self.progress_val.set(100)
             self.status.set(self.T("have_fun"))
             subprocess.Popen(cmd, cwd=g["dir"])
+            logging.info("lancé %s", g["id"])
             if o.get("close", False):
                 self.after(1500, self.destroy)
+        except Hub._Cancelled:
+            self.progress_val.set(0)
+            self.status.set(self.T("cancelled"))
+            logging.info("annulé par l'utilisateur")
         except Exception as e:
+            import traceback
+            logging.error("échec lancement %s\n%s", g["id"], traceback.format_exc())
             self.status.set(f"Erreur : {e}")
         finally:
             self.busy = False
             self.after(0, self._draw)
+
+    class _Cancelled(Exception):
+        pass
+
+    def _check_cancel(self):
+        if self._cancel:
+            raise Hub._Cancelled()
+
+    def _download(self, url, dest, label=""):
+        """téléchargement par blocs : barre de progression VIVANTE + annulable."""
+        import urllib.request
+        self._check_cancel()
+        if label:
+            self.status.set(self.T("downloading", n=label))
+        req = urllib.request.Request(url, headers={"User-Agent": "echelon-client"})
+        tmp = dest + ".part"
+        with urllib.request.urlopen(req, timeout=120) as r, open(tmp, "wb") as f:
+            total = int(r.headers.get("Content-Length") or 0)
+            done = 0
+            while True:
+                self._check_cancel()
+                chunk = r.read(1 << 16)
+                if not chunk:
+                    break
+                f.write(chunk)
+                done += len(chunk)
+                if total:
+                    self.progress_val.set(done / total * 100)
+        os.replace(tmp, dest)
+        logging.info("téléchargé %s (%d octets)", url, os.path.getsize(dest))
 
     def _sync_mod(self, g, mods):
         """bootstrap : jar du mod depuis le canal GitHub (sha256 vérifié)."""
@@ -1060,17 +1264,14 @@ del "%~f0"
             want = manifest.get("mod_version", "")
             have = self._state().get("mod_" + g["id"], "")
             if want != have or not os.path.exists(target):
-                self.status.set(f"Mise à jour de {g['name']} ({want})…")
-                tmp = target + ".new"
-                req = urllib.request.Request(g["base"] + "/" + manifest.get("mod_file", g["mod_file"]),
-                                             headers={"User-Agent": "echelon-client"})
-                with urllib.request.urlopen(req, timeout=120) as r, open(tmp, "wb") as f:
-                    shutil.copyfileobj(r, f)
-                sha = hashlib.sha256(open(tmp, "rb").read()).hexdigest()
+                logging.info("maj mod %s : %s -> %s", g["id"], have, want)
+                self._download(g["base"] + "/" + manifest.get("mod_file", g["mod_file"]),
+                               target + ".new", label=g["name"] + " " + str(want))
+                sha = hashlib.sha256(open(target + ".new", "rb").read()).hexdigest()
                 if manifest.get("mod_sha256") and sha != manifest["mod_sha256"]:
-                    os.remove(tmp)
+                    os.remove(target + ".new")
                     raise RuntimeError("Mod corrompu (sha256) — réessaie.")
-                shutil.move(tmp, target)
+                shutil.move(target + ".new", target)
                 self._save_state(**{"mod_" + g["id"]: want})
         elif not os.path.exists(target):
             raise RuntimeError("Pas de connexion pour télécharger le jeu.")
@@ -1079,18 +1280,20 @@ del "%~f0"
         import urllib.request
         for f in os.listdir(mods):
             if any(f.startswith(p) for p in g["purge"]):
+                logging.info("purge %s", f)
                 os.remove(os.path.join(mods, f))
         for prefix, project in g["deps"].items():
+            self._check_cancel()
             if any(f.startswith(prefix) for f in os.listdir(mods)):
                 continue
-            self.status.set(f"Téléchargement de {project}…")
             api = ("https://api.modrinth.com/v2/project/" + project
                    + "/version?game_versions=[%22" + MC_VERSION + "%22]&loaders=[%22fabric%22]")
             req = urllib.request.Request(api, headers={"User-Agent": "echelon-client"})
             versions = json.load(urllib.request.urlopen(req))
             f0 = versions[0]["files"][0]
-            urllib.request.urlretrieve(f0["url"], os.path.join(mods, f0["filename"]))
+            self._download(f0["url"], os.path.join(mods, f0["filename"]), label=project)
 
 
 if __name__ == "__main__":
+    setup_log()
     Hub().mainloop()
