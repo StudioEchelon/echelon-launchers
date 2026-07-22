@@ -60,7 +60,7 @@ except ImportError:
 
 MC_VERSION = "1.21.1"
 JAVA_RUNTIME = "java-runtime-delta"
-LAUNCHER_VERSION = "1.4"
+LAUNCHER_VERSION = "1.5"
 UPDATE_BASE = "https://github.com/StudioEchelon/echelon-launchers/releases/download/donshot"
 
 W, H = 640, 620
