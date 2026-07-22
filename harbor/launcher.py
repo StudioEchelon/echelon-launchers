@@ -5,7 +5,46 @@ Key-art plein écran, boutons du client Echelon, bootstrap auto-update.
 Windows + macOS.
 """
 import os, sys, math, random, shutil, threading, subprocess, uuid, json, platform
+import collections
 import tkinter as tk
+
+# ── lancement du jeu ────────────────────────────────────────────────────
+# Sans ça, Windows ouvre une console noire par-dessus le jeu : ça inquiète
+# les joueurs (« on me hacke ? »). CREATE_NO_WINDOW la supprime, et la sortie
+# part dans un fichier + un tampon mémoire que la page Journal affiche.
+GAME_LOG = collections.deque(maxlen=800)
+
+
+def launch_game(cmd, cwd):
+    """Lance le jeu sans console visible et capte sa sortie."""
+    kwargs = {"cwd": cwd, "stdout": subprocess.PIPE, "stderr": subprocess.STDOUT,
+              "text": True, "errors": "replace", "bufsize": 1}
+    if os.name == "nt":
+        kwargs["creationflags"] = 0x08000000          # CREATE_NO_WINDOW
+    proc = subprocess.Popen(cmd, **kwargs)
+
+    def pump():
+        try:
+            log_path = os.path.join(cwd, "logs")
+            os.makedirs(log_path, exist_ok=True)
+            f = open(os.path.join(log_path, "launcher-game.log"), "w",
+                     encoding="utf-8", errors="replace")
+        except Exception:
+            f = None
+        try:
+            for line in proc.stdout:
+                line = line.rstrip("\n")
+                GAME_LOG.append(line)
+                if f:
+                    f.write(line + "\n"); f.flush()
+        except Exception:
+            pass
+        finally:
+            if f:
+                f.close()
+
+    threading.Thread(target=pump, daemon=True).start()
+    return proc
 
 try:
     import minecraft_launcher_lib as mll
@@ -64,6 +103,14 @@ class Launcher(tk.Tk):
         self.progress_val = tk.DoubleVar(value=0)
         self.busy = False
         self.hover = None
+        # page Journal : sortie du jeu (GAME_LOG), scroll + auto-suivi
+        self.log_open = False
+        self.log_off = 0          # nb de lignes remontées depuis le bas (0 = suit)
+        self.log_status = ""
+        self._log_job = None
+        self._log_items = []
+        self._log_drag_y = None
+        self._java_path = None
         self.t = 0.0
         self._cache = {}
         self.particles = [[random.uniform(0, W), random.uniform(0, H),
@@ -73,6 +120,14 @@ class Launcher(tk.Tk):
         self.canvas.pack(fill="both", expand=True)
         self.canvas.bind("<Button-1>", self._click)
         self.canvas.bind("<Motion>", self._motion)
+        # molette + glissement : uniquement utiles à la page Journal
+        self.canvas.bind("<MouseWheel>", self._log_wheel)          # Windows / macOS
+        self.canvas.bind("<Button-4>", self._log_wheel)            # Linux
+        self.canvas.bind("<Button-5>", self._log_wheel)
+        self.canvas.bind("<B1-Motion>", self._log_drag)
+        self.canvas.bind("<ButtonRelease-1>", self._log_drag_end)
+        self.bind("<MouseWheel>", self._log_wheel)
+        self.bind("<Escape>", self._log_hide)
 
         # champ SANS chrome système : la pilule est dessinée sur le canvas,
         # l'Entry n'est qu'un texte transparent posé dedans
@@ -191,7 +246,8 @@ class Launcher(tk.Tk):
         iw, ih = 280, 40
         c.create_image(W // 2, 376, image=self._flat("input", iw, ih,
                                                      self._hex(INPUT_BG) + (235,), radius=ih // 2))
-        c.create_window(W // 2, 376, window=self.pseudo, width=iw - 60, height=20)
+        if not self.log_open:   # sinon l'Entry natif flotte au-dessus du Journal
+            c.create_window(W // 2, 376, window=self.pseudo, width=iw - 60, height=20)
         c.create_text(W // 2, 349, text="PSEUDO", fill=MUTED, font=("Helvetica", 8, "bold"))
 
         # bouton JOUER : flat pilule, hover en fondu (animé dans _tick)
@@ -214,6 +270,18 @@ class Launcher(tk.Tk):
         self._bar_fill = c.create_rectangle(bx0, by0, bx0, by0 + bh, fill=ACCENT, width=0)
         self._status_item = c.create_text(W // 2, 512, text=self.status.get(),
                                           fill=MUTED, font=("Arial", 10), width=W - 80)
+
+        # bouton Journal (discret, coin haut-droit)
+        jw, jh = 92, 26
+        jx, jy = W - jw - 16, 16
+        self._log_btn_zone = (jx, jy, jx + jw, jy + jh)
+        c.create_image(jx + jw // 2, jy + jh // 2,
+                       image=self._flat("logbtn", jw, jh, (12, 20, 23, 205), radius=13))
+        c.create_text(jx + jw // 2, jy + jh // 2, text="▤  JOURNAL",
+                      fill=MUTED, font=("Helvetica", 8, "bold"))
+
+        if self.log_open:
+            self._draw_log(c)
 
         # pied
         c.create_text(W // 2, H - 44, width=W - 60,
@@ -253,13 +321,246 @@ class Launcher(tk.Tk):
 
         self.after(FPS_MS, self._tick)
 
+    # ── page Journal (sortie du jeu) ──────────────────────────────────
+    LOG_LH = 14
+    LOG_MAXC = 88
+
+    @staticmethod
+    def _log_lines():
+        """copie de la deque : elle est alimentée par le thread de lecture."""
+        return list(GAME_LOG)
+
+    @staticmethod
+    def _log_color(line):
+        u = line.upper()
+        if "ERROR" in u or "EXCEPTION" in u or "FATAL" in u or "SEVERE" in u:
+            return "#E8908C"
+        if "WARN" in u:
+            return "#E6C079"
+        return "#A8B8B0"
+
+    def _log_dir(self):
+        return os.path.join(GAME_DIR, "logs")
+
+    def _dim(self):
+        if "dim" not in self._cache:
+            self._cache["dim"] = ImageTk.PhotoImage(Image.new("RGBA", (W, H), (4, 7, 8, 170)))
+        return self._cache["dim"]
+
+    def _open_path(self, path):
+        """ouvre un dossier (sans rouvrir de console Windows)."""
+        try:
+            os.makedirs(path, exist_ok=True)
+            if platform.system() == "Windows":
+                subprocess.Popen(["explorer", path], creationflags=0x08000000)
+            elif platform.system() == "Darwin":
+                subprocess.Popen(["open", path])
+            else:
+                subprocess.Popen(["xdg-open", path])
+        except Exception:
+            pass
+
+    def _draw_log(self, c):
+        """console du jeu : en-tête diagnostic + lignes colorées + actions."""
+        pw, ph = W - 48, H - 96
+        px, py = 24, 48
+        c.create_image(0, 0, anchor="nw", image=self._dim())
+        c.create_image(px + pw // 2, py + ph // 2,
+                       image=self._flat("logpanel", pw, ph, (13, 18, 21, 248), radius=16))
+
+        c.create_text(px + 22, py + 26, anchor="w", text="JOURNAL",
+                      fill=TEXT, font=("Helvetica", 12, "bold"))
+        c.create_text(px + 22, py + 44, anchor="w",
+                      text="sortie du jeu — utile pour signaler un bug",
+                      fill=MUTED, font=("Helvetica", 8))
+
+        java = self._java_path or "inconnu"
+        if len(java) > 60:
+            java = "…" + java[-59:]
+        folder = GAME_DIR
+        if len(folder) > 60:
+            folder = "…" + folder[-59:]
+        infos = ["Mod : " + (self._state().get("mod_version") or "inconnu")
+                 + "   ·   Launcher v" + LAUNCHER_VERSION + "   ·   MC " + MC_VERSION,
+                 "Dossier : " + folder,
+                 "Java : " + java]
+        for i, line in enumerate(infos):
+            c.create_text(px + 22, py + 68 + i * 14, anchor="w", text=line,
+                          fill="#6A7E74", font=("Helvetica", 8))
+
+        lx, ly = px + 18, py + 116
+        lw, lh = pw - 36, ph - 116 - 62
+        self._log_area = (lx, ly, lw, lh)
+        c.create_image(lx + lw // 2, ly + lh // 2,
+                       image=self._flat("logbox", lw, lh, (7, 11, 13, 255), radius=12))
+
+        lines = self._log_lines()
+        self._log_items = []
+        if lines:
+            n = max(1, (lh - 14) // self.LOG_LH)
+            for i in range(n):
+                self._log_items.append(
+                    c.create_text(lx + 12, ly + 12 + i * self.LOG_LH, anchor="nw", text="",
+                                  fill="#A8B8B0", font=("Courier New", 9)))
+            self._log_thumb = c.create_rectangle(0, 0, 0, 0, fill="#2E3E38", width=0)
+            self._log_render()
+        else:
+            self._log_thumb = c.create_rectangle(0, 0, 0, 0, fill="", width=0)
+            c.create_text(lx + lw // 2, ly + lh // 2 - 10,
+                          text="Aucun journal — lance le jeu d'abord.",
+                          fill=MUTED, font=("Helvetica", 10, "bold"))
+            if os.path.exists(os.path.join(self._log_dir(), "launcher-game.log")):
+                c.create_text(lx + lw // 2, ly + lh // 2 + 14,
+                              text="Un fichier de la session précédente existe : "
+                                   "logs/launcher-game.log",
+                              fill="#5A6E64", font=("Helvetica", 8), width=lw - 60,
+                              justify="center")
+
+        by = py + ph - 46
+        self._logcopy_zone = (px + 18, by, px + 18 + 110, by + 30)
+        c.create_image(px + 18 + 55, by + 15,
+                       image=self._flat("logcopy", 110, 30, (32, 42, 38, 255), radius=10))
+        c.create_text(px + 18 + 55, by + 15, text="COPIER", fill=TEXT,
+                      font=("Helvetica", 9, "bold"))
+
+        self._logfolder_zone = (px + 140, by, px + 140 + 170, by + 30)
+        c.create_image(px + 140 + 85, by + 15,
+                       image=self._flat("logfolder", 170, 30, (32, 42, 38, 255), radius=10))
+        c.create_text(px + 140 + 85, by + 15, text="OUVRIR LE DOSSIER", fill=TEXT,
+                      font=("Helvetica", 9, "bold"))
+
+        if self.log_status:
+            c.create_text(px + 322, by + 15, anchor="w", text=self.log_status,
+                          fill=ACCENT, font=("Helvetica", 9))
+
+        self._logclose_zone = (px + pw - 138, by, px + pw - 18, by + 30)
+        c.create_image(px + pw - 78, by + 15,
+                       image=self._flat("logclose", 120, 30, self._hex(ACCENT) + (255,), radius=10))
+        c.create_text(px + pw - 78, by + 15, text="FERMER", fill="#06140C",
+                      font=("Helvetica", 10, "bold"))
+
+    def _log_render(self):
+        """remplit les items texte avec la tranche visible (appelé aussi par le tick)."""
+        if not self._log_items:
+            return
+        c = self.canvas
+        lines = self._log_lines()
+        total, vis = len(lines), len(self._log_items)
+        self.log_off = max(0, min(self.log_off, max(0, total - vis)))
+        end = total - self.log_off
+        start = max(0, end - vis)
+        chunk = lines[start:end]
+        for i, item in enumerate(self._log_items):
+            if i < len(chunk):
+                c.itemconfig(item, text=chunk[i][:self.LOG_MAXC], fill=self._log_color(chunk[i]))
+            else:
+                c.itemconfig(item, text="")
+        lx, ly, lw, lh = self._log_area
+        if total > vis:
+            th = max(24, int((lh - 16) * vis / total))
+            pos = start / max(1, total - vis)
+            ty = ly + 8 + int((lh - 16 - th) * pos)
+            c.coords(self._log_thumb, lx + lw - 10, ty, lx + lw - 6, ty + th)
+        else:
+            c.coords(self._log_thumb, 0, 0, 0, 0)
+
+    def _log_tick(self):
+        """rafraîchit la console pendant que le jeu tourne (arrêt à la fermeture)."""
+        if not self.log_open:
+            self._log_job = None
+            return
+        try:
+            self._log_render()
+        except Exception:
+            pass
+        self._log_job = self.after(250, self._log_tick)
+
+    def _log_show(self):
+        self.log_open = True
+        self.log_off = 0
+        self.log_status = ""
+        self._draw()
+        if self._log_job is None:
+            self._log_job = self.after(250, self._log_tick)
+
+    def _log_hide(self, *_):
+        if not self.log_open:
+            return
+        self.log_open = False
+        self._log_items = []
+        if self._log_job is not None:
+            try:
+                self.after_cancel(self._log_job)
+            except Exception:
+                pass
+            self._log_job = None
+        self._draw()
+
+    def _log_scroll_by(self, lines):
+        if not self.log_open or not self._log_items:
+            return
+        self.log_off = max(0, self.log_off + lines)
+        self._log_render()
+
+    def _log_wheel(self, e):
+        if not self.log_open:
+            return
+        if getattr(e, "num", None) == 4:
+            step = 3
+        elif getattr(e, "num", None) == 5:
+            step = -3
+        else:
+            step = 3 if e.delta > 0 else -3
+        self._log_scroll_by(step)
+
+    def _log_drag(self, e):
+        if not self.log_open:
+            return
+        if self._log_drag_y is None:
+            self._log_drag_y = e.y
+            return
+        dy = e.y - self._log_drag_y
+        if abs(dy) >= self.LOG_LH:
+            self._log_scroll_by(int(dy / self.LOG_LH))
+            self._log_drag_y = e.y
+
+    def _log_drag_end(self, _e):
+        self._log_drag_y = None
+
+    def _log_copy(self):
+        try:
+            self.clipboard_clear()
+            self.clipboard_append("\n".join(self._log_lines()))
+            self.log_status = "Journal copié !"
+        except Exception:
+            self.log_status = ""
+
     # ── interactions ──────────────────────────────────────────────────
     def _click(self, e):
-        if self._hit(self._play_zone, e.x, e.y):
+        if self.log_open:   # modal : la page Journal capte tout
+            if self._hit(self._logcopy_zone, e.x, e.y):
+                self._log_copy()
+                self._draw()
+            elif self._hit(self._logfolder_zone, e.x, e.y):
+                self._open_path(self._log_dir())
+            elif self._hit(self._logclose_zone, e.x, e.y):
+                self._log_hide()
+            return
+        if self._hit(self._log_btn_zone, e.x, e.y):
+            self._log_show()
+        elif self._hit(self._play_zone, e.x, e.y):
             self.launch()
 
     def _motion(self, e):
+        if self.log_open:
+            over = any(self._hit(z, e.x, e.y) for z in
+                       (self._logcopy_zone, self._logfolder_zone, self._logclose_zone))
+            self.configure(cursor="hand2" if over else "")
+            return
         self.hover = "play" if self._hit(self._play_zone, e.x, e.y) else None
+        if self._hit(self._log_btn_zone, e.x, e.y):
+            self.configure(cursor="hand2")
+            return
         self.configure(cursor="hand2" if self.hover and not self.busy else "")
 
     @staticmethod
@@ -424,6 +725,7 @@ del "%~f0"
                     java = mll.runtime.get_executable_path(JAVA_RUNTIME, GAME_DIR)
             except Exception:
                 java = None
+            self._java_path = java or "system PATH"
 
             manifest = self._fetch_manifest()
             if self._self_update(manifest):
@@ -446,7 +748,7 @@ del "%~f0"
             cmd = mll.command.get_minecraft_command(fabric_version, GAME_DIR, options)
             self.progress_val.set(100)
             self.status.set("Bon vent, marin ! (tu peux fermer le launcher)")
-            subprocess.Popen(cmd, cwd=GAME_DIR)
+            launch_game(cmd, GAME_DIR)
         except Exception as e:
             self.status.set(f"Erreur : {e}")
         finally:
