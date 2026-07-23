@@ -604,7 +604,17 @@ class Launcher(tk.Tk):
         if manifest:
             want = manifest.get("mod_version", "")
             have = self._state().get("mod_version", "")
-            if want != have or not os.path.exists(target):
+            # re-télécharge si version différente, jar absent, OU jar présent mais
+            # SHA != manifeste (débloque un état coincé : version notée à jour mais
+            # jar réellement ancien/corrompu — la cause des "maj pas prise").
+            wantSha = manifest.get("mod_sha256", "")
+            haveSha = ""
+            if os.path.exists(target):
+                try:
+                    haveSha = hashlib.sha256(open(target, "rb").read()).hexdigest()
+                except Exception:
+                    haveSha = ""
+            if want != have or not os.path.exists(target) or (wantSha and haveSha != wantSha):
                 self.status.set(f"Mise à jour du mod Harbor ({want})…")
                 tmp = target + ".new"
                 req = urllib.request.Request(UPDATE_BASE + "/" + manifest.get("mod_file", "harbor.jar"),
