@@ -67,7 +67,7 @@ JAVA_RUNTIME = "java-runtime-delta"
 RELEASES = "https://github.com/StudioEchelon/echelon-launchers/releases/download"
 BG = "#0A0C0E"
 FADE_STEPS = 7
-CLIENT_VERSION = "1.4"
+CLIENT_VERSION = "1.5"
 CLIENT_BASE = RELEASES + "/client"   # manifest.json + StudioEchelonClient.exe
 
 
@@ -208,6 +208,8 @@ TR = {
                 "pt": "Offline", "it": "Offline", "ru": "Не в сети"},
     "players": {"fr": "en ligne", "en": "online", "es": "en línea", "de": "online",
                 "pt": "online", "it": "online", "ru": "в сети"},
+    "members": {"fr": "membres", "en": "members", "es": "miembros", "de": "Mitglieder",
+                "pt": "membros", "it": "membri", "ru": "участников"},
     "news": {"fr": "NOUVEAUTÉS", "en": "NEWS", "es": "NOVEDADES", "de": "NEUIGKEITEN",
              "pt": "NOVIDADES", "it": "NOVITÀ", "ru": "НОВОСТИ"},
     "downloading": {"fr": "Téléchargement de {n}…", "en": "Downloading {n}…",
@@ -484,6 +486,7 @@ class Hub(tk.Tk):
         self.busy = False
         self._cancel = False
         self._online = {}   # id de jeu → nb de joueurs (None = injoignable)
+        self._discord = None  # (total, en_ligne) du Discord, ou None si injoignable
         self._img_cache = {}
         self._fade_cache = {}
         self._fading = None
@@ -509,6 +512,7 @@ class Hub(tk.Tk):
         self.bind("<Key>", self._key)
 
         threading.Thread(target=self._ping_loop, daemon=True).start()
+        threading.Thread(target=self._discord_loop, daemon=True).start()
         self._draw()
         self.after(FPS_MS, self._tick)
 
@@ -568,6 +572,34 @@ class Hub(tk.Tk):
                 except Exception:
                     self._online[g["id"]] = None
             time.sleep(45)
+
+    # ── membres Discord (endpoint invite, pas besoin du widget) ────────
+    DISCORD_INVITE = "playharbor"
+
+    def _fetch_discord(self):
+        """(total, en_ligne) via l'API invite Discord, ou None."""
+        import urllib.request
+        url = ("https://discord.com/api/v9/invites/"
+               + self.DISCORD_INVITE + "?with_counts=true")
+        req = urllib.request.Request(url, headers={"User-Agent": "echelon-client"})
+        with urllib.request.urlopen(req, timeout=6) as r:
+            d = json.load(r)
+        total = d.get("approximate_member_count")
+        online = d.get("approximate_presence_count")
+        if total is None:
+            return None
+        return (int(total), int(online) if online is not None else None)
+
+    def _discord_loop(self):
+        import time
+        while True:
+            try:
+                res = self._fetch_discord()
+                if res is not None:
+                    self._discord = res   # sinon on garde le dernier connu
+            except Exception:
+                pass                      # hors-ligne : dernier connu conservé
+            time.sleep(60)
 
     def _self_update(self):
         """remplace le hub par une version plus récente publiée sur le canal client.
@@ -912,6 +944,32 @@ del "%~f0"
         c.create_image(bx0 + 24, by0 + bh2 // 2, image=self._load("assets/discord_mark.png", size=(20, 15)))
         c.create_text(bx0 + bw2 // 2 + 8, by0 + bh2 // 2, text=self.T("discord"),
                       fill="white", font=self.F(10, True))
+
+        # ── pastille membres Discord (live) ─────────────────────────────
+        if self._discord is not None:
+            total, dco = self._discord
+
+            def _fmt(n):
+                return format(int(n), ",").replace(",", " ")
+
+            dy = by0 + bh2 + 15
+            f8 = tkfont.Font(family=self.FONT, size=8, weight="bold")
+            members_txt = _fmt(total) + " " + self.T("members")
+            if dco is not None:
+                online_txt = _fmt(dco) + " " + self.T("players")
+                wm = f8.measure(members_txt)
+                wo = f8.measure(online_txt)
+                total_w = wm + 22 + wo   # membres + (point + espaces) + en ligne
+                x = cx + cw // 2 - total_w // 2
+                c.create_text(x, dy, text=members_txt, anchor="w",
+                              fill="#8AA7FF", font=self.F(8, True))
+                dotx = x + wm + 10
+                c.create_oval(dotx, dy - 3, dotx + 6, dy + 3, fill="#5AE68C", width=0)
+                c.create_text(dotx + 12, dy, text=online_txt, anchor="w",
+                              fill="#5AE68C", font=self.F(8, True))
+            else:
+                c.create_text(cx + cw // 2, dy, text=members_txt,
+                              fill="#8AA7FF", font=self.F(8, True))
 
         # pseudo (pilule verre, champ dessiné à la main)
         iy = H - 164
