@@ -5,3 +5,5 @@ __pycache__/
 client/build/
 client/dist/
 client/*.spec
+# sauvegardes des jars publies, pour pouvoir revenir en arriere
+.rollback/

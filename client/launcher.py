@@ -847,15 +847,24 @@ class Hub(tk.Tk):
 
     # ── mises à jour des jeux : même source que l'install (manifest du canal) ──
     def _updates_loop(self):
-        """relève la version publiée de chaque jeu pour un badge non deviné."""
+        """relève la version publiée de chaque jeu pour un badge non deviné.
+
+        Le paramètre anti-cache n'est pas décoratif : sans lui, un client lancé
+        juste après une publication lit un manifest périmé sur un cache
+        intermédiaire (constaté en vrai — GitHub envoie `Cache-Control:
+        no-cache`, un cache en amont le servait quand même) et croit être à jour.
+        """
         import time, urllib.request
+        n = 0
         while True:
+            n += 1
             for g in list(GAMES):
                 try:
                     channel = g["base"].rsplit("/", 1)[1]
                     req = urllib.request.Request(
-                        RELEASES + "/" + channel + "/manifest.json",
-                        headers={"User-Agent": "echelon-client"})
+                        RELEASES + "/" + channel + "/manifest.json?t=%d" % time.time(),
+                        headers={"User-Agent": "echelon-client",
+                                 "Cache-Control": "no-cache", "Pragma": "no-cache"})
                     m = json.load(urllib.request.urlopen(req, timeout=8))
                     ver = m.get("mod_version")
                     if ver:
@@ -863,7 +872,10 @@ class Hub(tk.Tk):
                 except Exception:
                     pass    # hors ligne : on n'affiche simplement pas de badge
             self.after(0, self._draw)
-            time.sleep(300)
+            # les 3 premières passes sont rapprochées : elles rattrapent une
+            # première lecture perimee, sinon la maj au demarrage etait manquee
+            # pour toute la session.
+            time.sleep(20 if n < 3 else 300)
 
     # ── Rich Presence : une app, un asset par projet ───────────────────
     def _rpc_activity(self, g):
@@ -920,16 +932,21 @@ class Hub(tk.Tk):
         si un jeu DÉJÀ installé a une version publiée plus récente, on la
         télécharge tout de suite, visiblement, avec l'UI de chargement."""
         import time
-        for _ in range(25):            # laisse _updates_loop relever les versions
-            if self._remote_ver:
-                break
-            time.sleep(1)
-        todo = [g for g in GAMES
-                if self._has_update(g)
-                and os.path.isdir(os.path.join(g["dir"], "mods"))]
-        if todo and not self.busy:
-            logging.info("maj auto au démarrage : %s", [g["id"] for g in todo])
-            self.after(0, self._autoupdate_run, todo)
+        # On ne regarde pas une seule fois : une premiere lecture perimee (cache)
+        # ou hors ligne ferait rater la maj pour toute la session. On surveille
+        # pendant 2 minutes, puis on laisse le badge faire son travail.
+        deadline = time.time() + 120
+        while time.time() < deadline:
+            time.sleep(2)
+            if self.busy:
+                return                 # une install est deja en cours
+            todo = [g for g in GAMES
+                    if self._has_update(g)
+                    and os.path.isdir(os.path.join(g["dir"], "mods"))]
+            if todo:
+                logging.info("maj auto au démarrage : %s", [g["id"] for g in todo])
+                self.after(0, self._autoupdate_run, todo)
+                return
 
     def _autoupdate_run(self, todo):
         if self.busy:

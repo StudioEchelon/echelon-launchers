@@ -29,6 +29,21 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CATALOG = os.path.join(ROOT, "catalog.json")
+
+
+def gh_bin():
+    """`gh` n'est pas toujours sur le PATH juste apres son installation."""
+    found = shutil.which("gh")
+    if found:
+        return found
+    for c in (r"C:\Program Files\GitHub CLI\gh.exe",
+              r"C:\Program Files (x86)\GitHub CLI\gh.exe",
+              os.path.expandvars(r"%LOCALAPPDATA%\GitHubCLI\gh.exe")):
+        if os.path.isfile(c):
+            return c
+    return "gh"
+
+
 RELEASES = "https://github.com/StudioEchelon/echelon-launchers/releases/download"
 LANGS = ("fr", "en", "es", "de", "pt", "it", "ru")
 
@@ -448,13 +463,14 @@ def cmd_release(args):
     with open(os.path.join(tmp, "manifest.json"), "w", encoding="utf-8") as f:
         _json.dump(man, f, indent=2)
 
-    if subprocess.call(["gh", "release", "view", channel],
+    gh = gh_bin()
+    if subprocess.call([gh, "release", "view", channel],
                        stdout=subprocess.PIPE, stderr=subprocess.PIPE) != 0:
-        subprocess.check_call(["gh", "release", "create", channel,
+        subprocess.check_call([gh, "release", "create", channel,
                                "--title", "%s — canal live" % channel,
                                "--notes", "Canal de mise à jour automatique du mod %s."
                                % channel])
-    rc = subprocess.call(["gh", "release", "upload", channel,
+    rc = subprocess.call([gh, "release", "upload", channel,
                           os.path.join(tmp, channel + ".jar"),
                           os.path.join(tmp, "manifest.json"), "--clobber"])
     if rc == 0:
