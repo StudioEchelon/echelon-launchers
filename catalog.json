@@ -93,7 +93,6 @@
   }
  ],
  "rpc": {
-  "app_id": 123456789012345678,
   "small_asset": "echelon",
   "button_label": "Studio Echelon",
   "button_url": "https://playechelon.net"

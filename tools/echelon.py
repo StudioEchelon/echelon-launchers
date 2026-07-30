@@ -470,9 +470,14 @@ def cmd_set_rpc(args):
     cat = load()
     rpc = cat.setdefault("rpc", {})
     key, val = args[0], " ".join(args[1:])
-    rpc[key] = coerce(val)
+    got = coerce(val)
+    if got is None:
+        rpc.pop(key, None)          # vider = retirer la clé, pas y mettre None
+        print(OK + "rpc.%s supprimé" % key)
+    else:
+        rpc[key] = got
+        print(OK + "rpc.%s = %r" % (key, got))
     save(cat)
-    print(OK + "rpc.%s = %r" % (key, rpc[key]))
     print("      → ./echelon check puis publish")
     return 0
 
