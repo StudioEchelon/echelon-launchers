@@ -1,0 +1,47 @@
+name: publish-catalog
+
+# Un commit qui touche catalog.json = une publication aux joueurs.
+# Le catalogue ne porte que du CONTENU (IP de serveur, accroches, nouveautés,
+# mise en une, ajout/masquage de projet) : réversible d'un `git revert`, et
+# aucune session de jeu n'est coupée. Les jars de mod et l'exe du hub, eux,
+# restent publiés à la main (publish.sh / publish-client.sh).
+on:
+  push:
+    branches: [main]
+    paths: ['catalog.json']
+  workflow_dispatch:
+
+# jamais deux publications en vol en même temps sur le même asset
+concurrency:
+  group: publish-catalog
+  cancel-in-progress: false
+
+permissions:
+  contents: write        # requis pour téléverser un asset de release
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # Le garde-fou tourne ICI, pas sur la parole de celui qui a poussé :
+      # un catalogue invalide fait échouer le job et n'atteint aucun joueur.
+      - name: Valider le catalogue
+        run: python tools/echelon.py check
+
+      - name: État publié
+        run: python tools/echelon.py list
+
+      - name: Publier sur le canal client
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view client >/dev/null 2>&1 || gh release create client \
+            --title "Studio Echelon Client" --notes "Hub des jeux Echelon."
+          gh release upload client catalog.json --clobber
+          echo "Catalogue publié — les hubs se mettront à jour au prochain démarrage."

@@ -1,0 +1,7 @@
+﻿.venv/
+__pycache__/
+*.pyc
+# artefacts de build PyInstaller : jamais dans git
+client/build/
+client/dist/
+client/*.spec
