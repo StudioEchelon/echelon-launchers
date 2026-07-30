@@ -14,6 +14,21 @@ import collections
 # part dans un fichier + un tampon mémoire que la page Journal affiche.
 GAME_LOG = collections.deque(maxlen=800)
 
+# `launch_game` protégeait le jeu, mais l'INSTALLATION passait par
+# minecraft_launcher_lib, qui lance l'installeur Fabric via `java` : chacun de
+# ces sous-process ouvrait sa propre console noire — c'est ce qui donnait
+# l'impression d'un truc de hackeur au joueur. On force le drapeau au niveau de
+# subprocess : plus rien, jamais, ne peut faire clignoter un terminal.
+if os.name == "nt":
+    CREATE_NO_WINDOW = 0x08000000
+    _popen_init = subprocess.Popen.__init__
+
+    def _popen_no_window(self, *args, **kwargs):
+        kwargs["creationflags"] = (kwargs.get("creationflags") or 0) | CREATE_NO_WINDOW
+        _popen_init(self, *args, **kwargs)
+
+    subprocess.Popen.__init__ = _popen_no_window
+
 
 def launch_game(cmd, cwd):
     """Lance le jeu sans console visible et capte sa sortie."""
@@ -59,7 +74,7 @@ try:
 except ImportError:
     mll = None   # l'UI s'ouvre quand même ; erreur propre au clic JOUER
 
-W, H = 1180, 700
+W, H = 1280, 760
 SIDEBAR = 210
 FPS_MS = 40
 MC_VERSION = "1.21.1"
@@ -287,7 +302,104 @@ TR = {
                  "pt": "Bom jogo! (podes fechar o launcher)",
                  "it": "Buon gioco! (puoi chiudere il launcher)",
                  "ru": "Приятной игры! (можно закрыть лаунчер)"},
+    # ── coquille v2 : sections du rail + pages ────────────────────────
+    "nav_home": {"fr": "ACCUEIL", "en": "HOME", "es": "INICIO", "de": "START",
+                 "pt": "INÍCIO", "it": "HOME", "ru": "ГЛАВНАЯ"},
+    "nav_library": {"fr": "BIBLIOTHÈQUE", "en": "LIBRARY", "es": "BIBLIOTECA",
+                    "de": "BIBLIOTHEK", "pt": "BIBLIOTECA", "it": "LIBRERIA",
+                    "ru": "БИБЛИОТЕКА"},
+    "nav_news": {"fr": "NOUVEAUTÉS", "en": "NEWS", "es": "NOVEDADES", "de": "NEUIGKEITEN",
+                 "pt": "NOVIDADES", "it": "NOVITÀ", "ru": "НОВОСТИ"},
+    "nav_dl": {"fr": "TÉLÉCHARGEMENTS", "en": "DOWNLOADS", "es": "DESCARGAS",
+               "de": "DOWNLOADS", "pt": "DOWNLOADS", "it": "DOWNLOAD", "ru": "ЗАГРУЗКИ"},
+    "nav_log": {"fr": "JOURNAL", "en": "LOG", "es": "REGISTRO", "de": "PROTOKOLL",
+                "pt": "REGISTO", "it": "REGISTRO", "ru": "ЖУРНАЛ"},
+    "featured": {"fr": "EN UNE", "en": "FEATURED", "es": "DESTACADOS", "de": "IM FOKUS",
+                 "pt": "DESTAQUES", "it": "IN PRIMO PIANO", "ru": "В ЦЕНТРЕ"},
+    "lib_sub": {"fr": "{n} projets Studio Echelon", "en": "{n} Studio Echelon projects",
+                "es": "{n} proyectos Studio Echelon", "de": "{n} Studio-Echelon-Projekte",
+                "pt": "{n} projetos Studio Echelon", "it": "{n} progetti Studio Echelon",
+                "ru": "{n} проектов Studio Echelon"},
+    "search": {"fr": "Rechercher…", "en": "Search…", "es": "Buscar…", "de": "Suchen…",
+               "pt": "Procurar…", "it": "Cerca…", "ru": "Поиск…"},
+    "no_results": {"fr": "Aucun projet ne correspond.", "en": "No project matches.",
+                   "es": "Ningún proyecto coincide.", "de": "Kein Projekt gefunden.",
+                   "pt": "Nenhum projeto corresponde.", "it": "Nessun progetto trovato.",
+                   "ru": "Ничего не найдено."},
+    "installed": {"fr": "Installé", "en": "Installed", "es": "Instalado", "de": "Installiert",
+                  "pt": "Instalado", "it": "Installato", "ru": "Установлено"},
+    "not_installed": {"fr": "Non installé", "en": "Not installed", "es": "No instalado",
+                      "de": "Nicht installiert", "pt": "Não instalado", "it": "Non installato",
+                      "ru": "Не установлено"},
+    "dl_empty": {"fr": "Aucun téléchargement en cours.", "en": "No download in progress.",
+                 "es": "Sin descargas en curso.", "de": "Kein Download aktiv.",
+                 "pt": "Nenhum download em curso.", "it": "Nessun download in corso.",
+                 "ru": "Нет активных загрузок."},
+    "dl_current": {"fr": "En cours", "en": "In progress", "es": "En curso", "de": "Läuft",
+                   "pt": "Em curso", "it": "In corso", "ru": "Выполняется"},
+    "dl_sub": {"fr": "installations et mises à jour", "en": "installs and updates",
+               "es": "instalaciones y actualizaciones", "de": "Installationen und Updates",
+               "pt": "instalações e atualizações", "it": "installazioni e aggiornamenti",
+               "ru": "установки и обновления"},
+    "prof_pseudo": {"fr": "Changer de pseudo", "en": "Change username",
+                    "es": "Cambiar usuario", "de": "Namen ändern",
+                    "pt": "Mudar nick", "it": "Cambia nome", "ru": "Сменить ник"},
+    "prof_sub": {"fr": "ton profil, partagé par tous les projets",
+                 "en": "your profile, shared across all projects",
+                 "es": "tu perfil, común a todos los proyectos",
+                 "de": "dein Profil, für alle Projekte",
+                 "pt": "o teu perfil, comum a todos os projetos",
+                 "it": "il tuo profilo, comune a tutti i progetti",
+                 "ru": "твой профиль, общий для всех проектов"},
+    "updating": {"fr": "MISE À JOUR…", "en": "UPDATING…", "es": "ACTUALIZANDO…",
+                 "de": "UPDATE…", "pt": "ATUALIZANDO…", "it": "AGGIORNAMENTO…",
+                 "ru": "ОБНОВЛЕНИЕ…"},
+    "up_to_date": {"fr": "À jour.", "en": "Up to date.", "es": "Actualizado.",
+                   "de": "Aktuell.", "pt": "Atualizado.", "it": "Aggiornato.",
+                   "ru": "Обновлено."},
+    "update_avail": {"fr": "Mise à jour", "en": "Update", "es": "Actualización",
+                     "de": "Update", "pt": "Atualização", "it": "Aggiornamento",
+                     "ru": "Обновление"},
+    "f_all": {"fr": "Tous", "en": "All", "es": "Todos", "de": "Alle",
+              "pt": "Todos", "it": "Tutti", "ru": "Все"},
+    "f_installed": {"fr": "Installés", "en": "Installed", "es": "Instalados",
+                    "de": "Installiert", "pt": "Instalados", "it": "Installati",
+                    "ru": "Установленные"},
+    "f_online": {"fr": "En ligne", "en": "Online", "es": "En línea", "de": "Online",
+                 "pt": "Online", "it": "Online", "ru": "В сети"},
+    "news_sub": {"fr": "tout ce qui bouge sur les projets", "en": "everything moving on the projects",
+                 "es": "todo lo que se mueve en los proyectos",
+                 "de": "alles Neue zu den Projekten",
+                 "pt": "tudo o que mexe nos projetos", "it": "tutto ciò che si muove sui progetti",
+                 "ru": "всё новое по проектам"},
 }
+
+# Sections du rail de gauche : la navigation porte les PAGES, pas les jeux —
+# c'est ce qui permet d'aligner 20 projets sans jamais toucher au rail.
+PAGES = [
+    ("home", "nav_home", "◆"),
+    ("library", "nav_library", "▦"),
+    ("news", "nav_news", "✦"),
+]
+
+# zone hors écran : un hit-test la traverse toujours sans jamais matcher
+NOZONE = (-9, -9, -9, -9)
+
+# Accueil : rangée « en une » (3 projets phares)
+FEAT_W, FEAT_H, FEAT_GAP = 168, 104, 16
+FEAT_TOP = H - 178
+
+# Bibliothèque : grille de cartes portrait 3:4
+CARD_W, CARD_H, CARD_GAP, CARD_COLS = 150, 200, 18, 6
+CARD_PITCH = CARD_H + 46
+
+# animations : douces et courtes, jamais de mouvement qui retarde un clic
+PAGE_FADE_STEPS = 8      # fondu d'entrée d'une page
+CARD_LIFT = 6            # de combien une carte se soulève au survol
+LIFT_EASE = 0.3          # inertie du soulèvement (0 = figé, 1 = instantané)
+NAV_EASE = 0.28          # inertie de l'indicateur du rail
+
+LIB_FILTERS = ("all", "installed", "online")
 
 
 # Catalogue par défaut EMBARQUÉ (fallback si pas de connexion au 1er lancement).
@@ -363,6 +475,7 @@ DEFAULT_GAMES = [
 ]
 
 GAMES = []   # rempli au démarrage depuis le catalogue distant (ou le défaut)
+RPC = {}     # bloc `rpc` du catalogue : {"app_id": "...", ...} — une seule app
 
 
 def _cache_dir():
@@ -386,6 +499,84 @@ def _cached_asset(url):
     return path
 
 
+class RichPresence(object):
+    """Rich Presence Discord avec UNE SEULE application pour tous les projets.
+
+    Le piège classique est une app Discord par jeu : un application_id par
+    projet, des assets à re-uploader partout, et 20 apps à maintenir. Ici il y a
+    un seul `app_id` (dans `catalog.json`) et une clé d'asset par projet
+    (`rpc_asset`, par défaut l'id du jeu). Ajouter un projet = uploader une image
+    dans l'app existante et l'écrire au catalogue. Zéro code.
+
+    Protocole IPC Discord en direct : pas de dépendance, socket nommé sous
+    Windows, socket unix ailleurs. Toute erreur est ignorée — Discord absent ne
+    doit jamais empêcher de jouer.
+    """
+    OP_HANDSHAKE, OP_FRAME = 0, 1
+
+    def __init__(self, app_id):
+        self.app_id = str(app_id)
+        self.sock = None
+        self._pid = os.getpid()
+
+    def _open(self):
+        import struct
+        if os.name == "nt":
+            for i in range(10):
+                try:
+                    self.sock = open(r"\\.\pipe\discord-ipc-%d" % i, "r+b", 0)
+                    break
+                except Exception:
+                    continue
+        else:
+            import socket
+            base = (os.environ.get("XDG_RUNTIME_DIR")
+                    or os.environ.get("TMPDIR") or "/tmp").rstrip("/")
+            for i in range(10):
+                try:
+                    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                    s.connect("%s/discord-ipc-%d" % (base, i))
+                    self.sock = s.makefile("rwb", 0)
+                    break
+                except Exception:
+                    continue
+        if self.sock is None:
+            raise IOError("Discord introuvable")
+        self._send(self.OP_HANDSHAKE, {"v": 1, "client_id": self.app_id})
+        self._recv()
+
+    def _send(self, op, payload):
+        import struct
+        data = json.dumps(payload).encode("utf-8")
+        self.sock.write(struct.pack("<II", op, len(data)) + data)
+        self.sock.flush()
+
+    def _recv(self):
+        import struct
+        head = self.sock.read(8)
+        if len(head) < 8:
+            raise IOError("IPC ferme")
+        _op, ln = struct.unpack("<II", head)
+        return self.sock.read(ln)
+
+    def set(self, activity):
+        if self.sock is None:
+            self._open()
+        self._send(self.OP_FRAME, {
+            "cmd": "SET_ACTIVITY", "nonce": str(uuid.uuid4()),
+            "args": {"pid": self._pid, "activity": activity},
+        })
+        self._recv()
+
+    def close(self):
+        try:
+            if self.sock is not None:
+                self.sock.close()
+        except Exception:
+            pass
+        self.sock = None
+
+
 def _normalize(entry):
     """convertit une entrée de catalogue (JSON) en jeu prêt à l'emploi."""
     gid = entry["id"]
@@ -407,29 +598,62 @@ def _normalize(entry):
                 g[k] = entry.get(k, f"assets/{gid}_{k}.png")   # repli embarqué
         else:
             g[k] = entry.get(k, f"assets/{gid}_{k}.png")
+    # visuel portrait 3:4 de la grille Bibliothèque : optionnel, on recadre
+    # le key-art quand il manque (donc aucun asset obligatoire par projet).
+    g["card"] = None
+    if entry.get("card_url"):
+        try:
+            g["card"] = _cached_asset(entry["card_url"])
+        except Exception:
+            g["card"] = None
+    elif entry.get("card"):
+        g["card"] = entry["card"]
     return g
 
 
 def load_games():
-    """catalogue distant → cache → défaut embarqué. Jamais bloquant."""
+    """catalogue distant → cache → défaut embarqué. Jamais bloquant.
+
+    ECHELON_CATALOG=<chemin> fait lire un catalogue LOCAL : c'est l'aperçu
+    (`./echelon preview`) avant publication. Dans ce mode on ne touche pas au
+    cache réel, pour ne jamais polluer l'install d'un joueur.
+    """
     import urllib.request
+    global RPC
     raw = None
+    doc = None
+    override = os.environ.get("ECHELON_CATALOG")
     cache = os.path.join(game_root("StudioEchelon"), "catalog.json")
-    try:
-        req = urllib.request.Request(CLIENT_BASE + "/catalog.json",
-                                     headers={"User-Agent": "echelon-client"})
-        raw = json.load(urllib.request.urlopen(req, timeout=8)).get("games")
-        os.makedirs(os.path.dirname(cache), exist_ok=True)
-        json.dump({"games": raw}, open(cache, "w"))
-    except Exception:
+    if override:
         try:
-            raw = json.load(open(cache)).get("games")
+            doc = json.load(open(override, encoding="utf-8"))
+            raw = doc.get("games")
+            logging.info("catalogue local (aperçu) : %s", override)
         except Exception:
+            logging.error("aperçu illisible : %s", override)
             raw = None
+    else:
+        try:
+            req = urllib.request.Request(CLIENT_BASE + "/catalog.json",
+                                         headers={"User-Agent": "echelon-client"})
+            doc = json.load(urllib.request.urlopen(req, timeout=8))
+            raw = doc.get("games")
+            os.makedirs(os.path.dirname(cache), exist_ok=True)
+            json.dump(doc, open(cache, "w"))
+        except Exception:
+            try:
+                doc = json.load(open(cache))
+                raw = doc.get("games")
+            except Exception:
+                raw = None
+    if isinstance(doc, dict) and isinstance(doc.get("rpc"), dict):
+        RPC = doc["rpc"]     # une app pour tous les projets
     if not raw:
         return list(DEFAULT_GAMES)
     out = []
     for entry in raw:
+        if entry.get("hidden"):
+            continue   # projet préparé côté catalogue mais pas encore exposé
         try:
             out.append(_normalize(entry))
         except Exception:
@@ -464,10 +688,26 @@ class Hub(tk.Tk):
         self.FONT = "Zalando Sans Expanded" if "Zalando Sans Expanded" in fams else "Helvetica"
 
         self.selected = 0
+        # coquille v2 : le rail navigue entre PAGES, la sélection de jeu est
+        # un état à part (l'Accueil est la fiche du jeu sélectionné).
+        self.page = "home"
+        self.scroll = {"library": 0, "news": 0, "downloads": 0}
+        self.lib_query = ""
+        self.lib_focus = False
+        self.lib_filter = "all"
+        # états d'animation : ils survivent aux redraws (les items, eux, meurent)
+        self._nav_ind_y = None
+        self._nav_active_y = 100
+        self._page_fade = None
+        self._lift = {}
+        self._card_anim = []
+        # versions distantes par jeu, pour un badge « Mise à jour » honnête
+        self._remote_ver = {}
         self.lang = self._state().get("lang", "fr")
         if self.lang not in [c for c, _, _ in LANGS]:
             self.lang = "fr"
         self.lang_open = False
+        self.prof_open = False
         self.options_open = False
         self.skin_open = False
         # page Journal : sortie du jeu (GAME_LOG), scroll + auto-suivi
@@ -484,6 +724,7 @@ class Hub(tk.Tk):
         self.status = tk.StringVar(value="")
         self.progress_val = tk.DoubleVar(value=0)
         self.busy = False
+        self.autoupdating = False
         self._cancel = False
         self._online = {}   # id de jeu → nb de joueurs (None = injoignable)
         self._discord = None  # (total, en_ligne) du Discord, ou None si injoignable
@@ -513,6 +754,9 @@ class Hub(tk.Tk):
 
         threading.Thread(target=self._ping_loop, daemon=True).start()
         threading.Thread(target=self._discord_loop, daemon=True).start()
+        threading.Thread(target=self._updates_loop, daemon=True).start()
+        threading.Thread(target=self._autoupdate_boot, daemon=True).start()
+        threading.Thread(target=self._rpc_loop, daemon=True).start()
         self._draw()
         self.after(FPS_MS, self._tick)
 
@@ -600,6 +844,133 @@ class Hub(tk.Tk):
             except Exception:
                 pass                      # hors-ligne : dernier connu conservé
             time.sleep(60)
+
+    # ── mises à jour des jeux : même source que l'install (manifest du canal) ──
+    def _updates_loop(self):
+        """relève la version publiée de chaque jeu pour un badge non deviné."""
+        import time, urllib.request
+        while True:
+            for g in list(GAMES):
+                try:
+                    channel = g["base"].rsplit("/", 1)[1]
+                    req = urllib.request.Request(
+                        RELEASES + "/" + channel + "/manifest.json",
+                        headers={"User-Agent": "echelon-client"})
+                    m = json.load(urllib.request.urlopen(req, timeout=8))
+                    ver = m.get("mod_version")
+                    if ver:
+                        self._remote_ver[g["id"]] = str(ver)
+                except Exception:
+                    pass    # hors ligne : on n'affiche simplement pas de badge
+            self.after(0, self._draw)
+            time.sleep(300)
+
+    # ── Rich Presence : une app, un asset par projet ───────────────────
+    def _rpc_activity(self, g):
+        """charge utile Discord pour le projet courant, tirée du catalogue."""
+        act = {
+            "details": g["name"],
+            "state": GT(g, "tagline", self.lang, "")[:120] or self.T("nav_home"),
+            "assets": {
+                # clé d'asset uploadée UNE fois dans l'app Echelon
+                "large_image": g.get("rpc_asset") or g["id"],
+                "large_text": g["name"],
+                "small_image": RPC.get("small_asset", "echelon"),
+                "small_text": "Studio Echelon",
+            },
+        }
+        n = self._online.get(g["id"])
+        if isinstance(n, int):
+            act["state"] = "%s · %d %s" % (g["name"], n, self.T("players"))
+        url = RPC.get("button_url") or g.get("discord")
+        if url:
+            act["buttons"] = [{"label": RPC.get("button_label", "Studio Echelon"),
+                               "url": url}]
+        return act
+
+    def _rpc_loop(self):
+        """présence du HUB : reflète le projet sélectionné, sans app par jeu."""
+        import time
+        app_id = RPC.get("app_id")
+        if not app_id:
+            logging.info("rpc : pas d'app_id au catalogue, presence desactivee")
+            return
+        rp = RichPresence(app_id)
+        last = None
+        while True:
+            try:
+                g = GAMES[self.selected]
+                if self._opts(g).get("rpc", True) and not self.busy:
+                    key = (g["id"], self.lang, self._online.get(g["id"]))
+                    if key != last:
+                        rp.set(self._rpc_activity(g))
+                        last = key
+                elif last is not None:
+                    rp.close()
+                    last = None
+            except Exception as e:
+                rp.close()
+                last = None
+                logging.debug("rpc indisponible : %s", e)
+            time.sleep(5)
+
+    # ── mise à jour appliquée dès le lancement ────────────────────────
+    def _autoupdate_boot(self):
+        """Le joueur ne doit pas découvrir en cliquant JOUER qu'il doit attendre :
+        si un jeu DÉJÀ installé a une version publiée plus récente, on la
+        télécharge tout de suite, visiblement, avec l'UI de chargement."""
+        import time
+        for _ in range(25):            # laisse _updates_loop relever les versions
+            if self._remote_ver:
+                break
+            time.sleep(1)
+        todo = [g for g in GAMES
+                if self._has_update(g)
+                and os.path.isdir(os.path.join(g["dir"], "mods"))]
+        if todo and not self.busy:
+            logging.info("maj auto au démarrage : %s", [g["id"] for g in todo])
+            self.after(0, self._autoupdate_run, todo)
+
+    def _autoupdate_run(self, todo):
+        if self.busy:
+            return
+        self.busy = True
+        self.autoupdating = True
+        self.selected = GAMES.index(todo[0])
+        self.page = "home"
+        self._draw()
+        threading.Thread(target=self._autoupdate_thread, args=(todo,),
+                         daemon=True).start()
+
+    def _autoupdate_thread(self, todo):
+        try:
+            self._cancel = False
+            for g in todo:
+                self.selected = GAMES.index(g)
+                self.after(0, self._draw)
+                self.status.set(self.T("downloading", n=g["name"]))
+                mods = os.path.join(g["dir"], "mods")
+                self._sync_mod(g, mods)     # écrit mod_<canal> → _has_update tombe
+            self.status.set(self.T("up_to_date"))
+        except Hub._Cancelled:
+            self.status.set(self.T("cancelled"))
+        except Exception as e:
+            logging.error("maj auto échouée : %s", e)
+            self.status.set("")             # au pire, JOUER la refera
+        finally:
+            self.progress_val.set(0)
+            self.busy = False
+            self.autoupdating = False
+            self.after(0, self._draw)
+
+    def _has_update(self, g):
+        """True seulement si on connaît les DEUX versions et qu'elles diffèrent."""
+        local = self._state().get("mod_" + g["base"].rsplit("/", 1)[1])
+        remote = self._remote_ver.get(g["id"])
+        return bool(local and remote and local != remote)
+
+    def _update_count(self):
+        return sum(1 for g in GAMES if self._has_update(g))
 
     def _self_update(self):
         """remplace le hub par une version plus récente publiée sur le canal client.
@@ -763,10 +1134,6 @@ del "%~f0"
                 self._fading = None
                 c.itemconfig(self._bg_item, image=self._bg_composed(GAMES[self.selected]))
 
-        if hasattr(self, "_sel_logo_item"):
-            base_y = self._sel_logo_y + math.sin(self.t * 2.2) * 4
-            c.coords(self._sel_logo_item, SIDEBAR // 2 + 6, base_y)
-
         if hasattr(self, "_dot_item"):
             lbl, lcol = self._online_label(GAMES[self.selected])
             if lcol == "#5AE68C":   # en ligne : le point pulse
@@ -805,6 +1172,52 @@ del "%~f0"
             c.coords(self._bar_fill, bx0, by0, bx0 + bw * frac, by0 + bh)
             c.itemconfig(self._status_item, text=self.status.get())
 
+        # UI de chargement : barre, pourcentage et points qui battent
+        if hasattr(self, "_inst_bar"):
+            ibx, iby, ibw, ibh = self._inst_geom
+            pct = max(0.0, min(100.0, self.progress_val.get()))
+            c.coords(self._inst_bar, ibx, iby, ibx + ibw * pct / 100.0, iby + ibh)
+            c.itemconfig(self._inst_pct, text="%d %%" % int(pct))
+            c.itemconfig(self._inst_status, text=self.status.get())
+            iacc = GAMES[self.selected]["accent"]
+            for k, item in enumerate(self._inst_dots):
+                a = 0.28 + 0.72 * (0.5 + 0.5 * math.sin(self.t * 4.2 - k * 0.75))
+                c.itemconfig(item, fill=self._mix(iacc, a))
+
+        # ── animations légères ────────────────────────────────────────
+        # liseré du rail : glisse vers la section active
+        if getattr(self, "_nav_ind", None) is not None:
+            self._nav_ind_y += (self._nav_active_y - self._nav_ind_y) * NAV_EASE
+            c.coords(self._nav_ind, 7, self._nav_ind_y + 7, 10, self._nav_ind_y + 27)
+
+        # cartes : soulèvement amorti au survol
+        for key, items, target in self._card_anim:
+            cur = self._lift.get(key, 0.0)
+            if abs(cur - target) < 0.05:
+                cur = float(target)
+            else:
+                cur += (target - cur) * LIFT_EASE
+            self._lift[key] = cur
+            if cur > 0.02:
+                for item, ix, iy in items:
+                    c.coords(item, ix, iy - cur)
+
+        # logo du projet sélectionné : respiration
+        if getattr(self, "_feat_logo", None) is not None:
+            fx, fy = self._feat_logo_base
+            fy -= self._lift.get(self._feat_logo_key, 0.0)
+            c.coords(self._feat_logo, fx, fy + math.sin(self.t * 2.2) * 2.5)
+
+        # fondu d'entrée de page
+        if self._page_fade is not None and getattr(self, "_pf_item", None) is not None:
+            self._page_fade += 1
+            if self._page_fade >= PAGE_FADE_STEPS:
+                c.delete(self._pf_item)
+                self._page_fade = None
+                self._pf_item = None
+            else:
+                c.itemconfig(self._pf_item, image=self._fade_veil(self._page_fade))
+
         acc = GAMES[self.selected]["accent"]
         for i, p in enumerate(self.particles):
             p[1] -= p[2]
@@ -830,6 +1243,17 @@ del "%~f0"
         return f"{n} {self.T('players')}", "#5AE68C"
 
     # ── dessin ────────────────────────────────────────────────────────
+    # zones/items propres à une page : remis à zéro à chaque redraw, sinon un
+    # hit-test d'une autre page répondrait encore (30+ zones absolues).
+    _ZONE_ATTRS = ("_play_zone", "_gear_zone", "_input_zone", "_discord_zone",
+                   "_site_zone", "_search_zone", "_instcancel_zone", "_chip_zone",
+                   "_lang_zone", "_discord_zone")
+    _ITEM_ATTRS = ("_dot_item", "_online_item", "_input_text",
+                   "_input_cursor", "_play_item", "_play_frames", "_bar_fill",
+                   "_status_item", "_bar_geom", "_search_item",
+                   "_inst_bar", "_inst_geom", "_inst_status", "_inst_pct", "_inst_dots",
+                   "_feat_logo", "_feat_logo_base", "_feat_logo_key", "_pf_item")
+
     def _select(self, idx):
         if idx == self.selected or self.busy:
             return
@@ -837,12 +1261,48 @@ del "%~f0"
         self.selected = idx
         self._draw(fade_from=prev)
 
+    def _pick_game(self, idx):
+        """clic sur une carte : sélectionne le jeu ET ramène sur sa fiche."""
+        if self.busy and idx != self.selected:
+            return
+        prev = GAMES[self.selected]
+        changed = idx != self.selected
+        self.selected = idx
+        self.page = "home"
+        self.hover = None
+        self._draw(fade_from=prev if changed else None)
+
+    def _goto(self, page):
+        if page == self.page:
+            return
+        self.page = page
+        self.hover = None
+        self._page_fade = 0
+        self._draw()
+
+    def _featured(self):
+        """indices des 3 projets en une : champ `featured` du catalogue, sinon l'ordre."""
+        idx = [i for i, g in enumerate(GAMES) if g.get("featured")]
+        return (idx or list(range(len(GAMES))))[:3]
+
     def _draw(self, fade_from=None):
         c = self.canvas
         c.delete("all")
+        for a in self._ITEM_ATTRS:
+            self.__dict__.pop(a, None)
+        for a in self._ZONE_ATTRS:
+            setattr(self, a, NOZONE)
+        self._game_zones = []
+        self._nav_zones = []
+        self._filter_zones = []
+        self._prof_zones = []
+        self._card_anim = []
+
         g = GAMES[self.selected]
         accent = g["accent"]
 
+        # le key-art du jeu sélectionné reste le fond de TOUTES les pages :
+        # c'est lui qui porte la DA, les autres pages le voilent seulement.
         self._bg_item = c.create_image(0, 0, anchor="nw", image=self._bg_composed(g))
         if fade_from is not None:
             self._fading = (self._fade_frames(fade_from, g), 0)
@@ -853,62 +1313,226 @@ del "%~f0"
             for p in self.particles
         ]
 
-        # sidebar
-        y = 60
-        self._logo_zones = []
-        for i, game in enumerate(GAMES):
-            sel = i == self.selected
-            hov = self.hover == ("logo", i)
-            logo = self._load(game["logo"], size=(170, 120), dim=1.0 if sel else (0.72 if hov else 0.42))
-            item = c.create_image(SIDEBAR // 2 + 6, y + 60, image=logo)
-            if sel:
-                self._sel_logo_item = item
-                self._sel_logo_y = y + 60
-                c.create_rectangle(6, y + 10, 9, y + 110, fill=accent, width=0)
-            self._logo_zones.append((10, y, SIDEBAR, y + 120, i))
-            y += 190
+        if self.page == "home":
+            self._draw_home(c, g, accent)
+        else:
+            c.create_image(0, 0, anchor="nw", image=self._page_veil())
+            if self.page == "library":
+                self._draw_library(c, accent)
+            elif self.page == "news":
+                self._draw_news(c, accent)
+            elif self.page == "downloads":
+                self._draw_downloads(c, accent)
 
+        # rail puis barre haute PAR-DESSUS : ils masquent les débords de grille
+        # quand elle défile, ce qui évite d'avoir à clipper le canvas.
+        self._draw_rail(c, accent)
+        self._draw_topbar(c, accent)
+
+        if self.options_open:
+            self._draw_options(c, g)
+        if self.skin_open:
+            self._draw_skin(c, g)
+        if self.log_open:
+            self._draw_log(c, g)
+        if self.busy:
+            self._draw_installing(c, g)   # par-dessus tout : plus de console
+
+        # fondu d'entrée de page : un voile qui s'efface en quelques frames
+        if self._page_fade is not None:
+            self._pf_item = c.create_image(0, 0, anchor="nw",
+                                           image=self._fade_veil(self._page_fade))
+
+    def _fade_veil(self, i):
+        key = ("pfade", i)
+        if key not in self._img_cache:
+            a = int(190 * (1.0 - i / float(PAGE_FADE_STEPS)))
+            self._img_cache[key] = ImageTk.PhotoImage(
+                Image.new("RGBA", (W, H), (6, 9, 11, a)))
+        return self._img_cache[key]
+
+    def _page_veil(self):
+        """voile des pages autres que l'Accueil : le key-art reste lisible dessous."""
+        if "veil" not in self._img_cache:
+            self._img_cache["veil"] = ImageTk.PhotoImage(
+                Image.new("RGBA", (W, H), (6, 9, 11, 232)))
+        return self._img_cache["veil"]
+
+    # ── rail de gauche : des SECTIONS, pas des jeux ────────────────────
+    def _draw_rail(self, c, accent):
+        c.create_rectangle(0, 0, SIDEBAR, H, fill="#080A0C", width=0)
+        c.create_rectangle(SIDEBAR, 0, SIDEBAR + 1, H, fill="#151D1F", width=0)
+
+        # identité studio en en-tête (place d'un logo d'éditeur)
         studio_hov = self.hover == "studio"
-        c.create_image(30, H - 30, image=self._load("assets/studio_icon.png", size=(26, 26),
-                                                    dim=1.0 if studio_hov else 0.9))
-        c.create_image(30 + 14 + 31, H - 30, image=self._load("assets/studio_wordmark.png",
-                                                              size=(100, 20), dim=1.0 if studio_hov else 0.8))
-        self._studio_zone = (14, H - 46, 14 + 130, H - 14)
+        c.create_image(30, 40, image=self._load("assets/studio_icon.png", size=(26, 26),
+                                                dim=1.0 if studio_hov else 0.9))
+        c.create_image(30 + 14 + 31, 40,
+                       image=self._load("assets/studio_wordmark.png", size=(100, 20),
+                                        dim=1.0 if studio_hov else 0.8))
+        self._studio_zone = (14, 24, 14 + 130, 56)
+        c.create_rectangle(20, 74, SIDEBAR - 20, 75, fill="#161F21", width=0)
+
+        y = 100
+        for key, label, glyph in PAGES:
+            self._nav_row(c, key, label, glyph, y, accent)
+            y += 44
+
+        # bas du rail : ce qui est transverse aux projets
+        self._nav_row(c, "downloads", "nav_dl", "⬇", H - 104, accent,
+                      badge=self._update_count())
+        self._nav_row(c, "log", "nav_log", "≡", H - 60, accent)
+
+        # un seul liseré, qui glisse d'une section à l'autre (animé par _tick)
+        if self._nav_ind_y is None:
+            self._nav_ind_y = float(self._nav_active_y)
+        self._nav_ind = c.create_rectangle(7, self._nav_ind_y + 7, 10, self._nav_ind_y + 27,
+                                           fill=accent, width=0)
+
         if studio_hov:
             self._draw_studio_tooltip(c)
 
-        # ── sélecteur de langue (haut-droite)
+    def _nav_row(self, c, key, label, glyph, y, accent, badge=0):
+        active = (self.page == key) or (key == "log" and self.log_open)
+        hov = self.hover == ("nav", key)
+        if active or hov:
+            c.create_image(SIDEBAR // 2, y + 17,
+                           image=self._flat("nav" + ("_a" if active else "_h"),
+                                            SIDEBAR - 26, 34,
+                                            (21, 31, 29, 255) if active else (17, 24, 23, 215),
+                                            radius=10))
+        if active:
+            self._nav_active_y = y
+        col = "#EAF6EF" if active else ("#C8D8CC" if hov else "#76918A")
+        c.create_text(30, y + 17, text=glyph, fill=accent if active else col,
+                      font=(self.FONT, 11))
+        c.create_text(48, y + 17, anchor="w", text=self.T(label), fill=col, font=self.F(9, True))
+        if badge:
+            # pastille sur l'icône : le libellé peut être long selon la langue
+            bx, by = 38, y + 9
+            c.create_oval(bx - 7, by - 7, bx + 7, by + 7, fill=accent, width=0)
+            c.create_text(bx, by, text=str(badge) if badge < 10 else "9+",
+                          fill="#06140C", font=self.F(7, True))
+        self._nav_zones.append((10, y, SIDEBAR - 14, y + 34, key))
+
+    # ── barre haute : un seul chip profil, qui porte tous les réglages ──
+    # Avant, la langue avait sa pastille à part, le skin était rangé dans les
+    # options PAR JEU alors qu'il est global, et le Discord était un bouton par
+    # projet alors que les projets partagent le même lien. Tout est ici.
+    def _draw_topbar(self, c, accent):
+        cw, ch = 168, 32
+        cxx, cyy = W - cw - 18, 16
+        self._chip_zone = (cxx, cyy, cxx + cw, cyy + ch)
+        chov = self.hover == "chip" or self.prof_open
+        c.create_image(cxx + cw // 2, cyy + ch // 2,
+                       image=self._flat("chip" + ("_h" if chov else ""), cw, ch,
+                                        (22, 30, 34, 240) if chov else (14, 20, 23, 212),
+                                        radius=13))
+        self._draw_head(c, cxx + 22, cyy + ch // 2, 22, accent)
+        c.create_text(cxx + 42, cyy + ch // 2, anchor="w", text=self.pseudo_text[:13],
+                      fill="#EAF6EF" if chov else "#C8D8CC", font=self.F(9, True))
+        c.create_text(cxx + cw - 14, cyy + ch // 2, text="▾",
+                      fill=accent if chov else "#7A948A", font=self.F(8))
+
+        if self.prof_open:
+            self._draw_profile_menu(c, cxx + cw, cyy + ch + 8, accent)
+
+    def _draw_head(self, c, x, y, size, accent):
+        """tête de skin, ou initiale sur pastille accent si aucun skin."""
+        head = self._skin_head(size)
+        if head is not None:
+            c.create_image(x, y, image=head)
+        else:
+            r = size // 2 + 1
+            c.create_oval(x - r, y - r, x + r, y + r, fill=accent, width=0)
+            c.create_text(x, y, text=(self.pseudo_text or "?")[:1].upper(),
+                          fill="#06140C", font=self.F(9, True))
+
+    def _draw_profile_menu(self, c, right, top, accent):
+        """menu profil : pseudo, skin, langue, Discord, studio — tout le global."""
+        # 320 et pas 268 : en FR « Rejoindre le Discord » + le compteur de
+        # membres ne tenaient pas et se chevauchaient.
+        mw = 320
         cur = next((l for l in LANGS if l[0] == self.lang), LANGS[0])
-        lw, lh = 78, 30
-        lx, ly = W - lw - 18, 16
-        self._lang_zone = (lx, ly, lx + lw, ly + lh)
-        lang_hov = self.hover == "lang"
-        c.create_image(lx + lw // 2, ly + lh // 2,
-                       image=self._flat("langbtn" + ("_h" if lang_hov else ""), lw, lh,
-                                        (22, 30, 34, 235) if lang_hov else (14, 20, 23, 210), radius=12))
-        c.create_text(lx + 20, ly + lh // 2, text=cur[2], font=(self.FONT, 13))
-        c.create_text(lx + 40, ly + lh // 2, text=cur[0].upper(), fill="#DCE8E0", font=self.F(9, True))
-        c.create_text(lx + lw - 14, ly + lh // 2, text="▾", fill="#7A948A", font=self.F(8))
+        rows = [
+            ("pseudo", "✎", self.T("prof_pseudo"), ""),   # déjà dans l'en-tête
+            ("skin", "◲", self.T("skin"), ""),
+            ("lang", cur[2], self.T("language"), cur[0].upper()),
+            ("discord", None, self.T("discord"), self._discord_count()),
+            ("site", "◉", self.T("see_site"), ""),
+        ]
+        rowh, pad = 40, 12
+        mh = rowh * len(rows) + pad * 2 + 44
+        mx = right - mw
+        c.create_image(mx + mw // 2, top + mh // 2,
+                       image=self._flat("profmenu", mw, mh, (13, 18, 22, 250), radius=16))
+
+        # en-tête : la tête en grand + le pseudo
+        self._draw_head(c, mx + 34, top + 30, 34, accent)
+        c.create_text(mx + 62, top + 22, anchor="w", text=self.pseudo_text or "—",
+                      fill="#EAF6EF", font=self.F(12, True))
+        c.create_text(mx + 62, top + 40, anchor="w", text=self.T("prof_sub"),
+                      fill="#6A7E74", font=self.F(8), width=mw - 78)
+        c.create_rectangle(mx + 16, top + 56, mx + mw - 16, top + 57, fill="#1C2622", width=0)
+
+        self._prof_zones = []
+        y = top + 62
+        for key, glyph, label, value in rows:
+            hov = self.hover == ("prof", key)
+            if hov:
+                c.create_image(mx + mw // 2, y + rowh // 2 - 2,
+                               image=self._flat("profrow", mw - 20, rowh - 6,
+                                                (23, 32, 30, 255), radius=10))
+            if key == "discord":
+                c.create_image(mx + 32, y + rowh // 2 - 2,
+                               image=self._load("assets/discord_mark.png", size=(20, 15)))
+            else:
+                c.create_text(mx + 32, y + rowh // 2 - 2, text=glyph,
+                              fill=accent if hov else "#8AA49A", font=(self.FONT, 12))
+            c.create_text(mx + 56, y + rowh // 2 - 2, anchor="w", text=label,
+                          fill="#EAF6EF" if hov else "#C8D8CC", font=self.F(9, True))
+            if value:
+                c.create_text(mx + mw - 24, y + rowh // 2 - 2, anchor="e", text=value,
+                              fill="#7A948A", font=self.F(8))
+            self._prof_zones.append((mx + 10, y, mx + mw - 10, y + rowh - 4, key))
+            y += rowh
+
         if self.lang_open:
-            self._draw_lang_menu(c, lx, ly + lh + 6, lw)
+            self._draw_lang_menu(c, mx - 156, top + 62 + rowh * 2, 150)
 
-        # ── bouton Journal (discret, à gauche du sélecteur de langue)
-        jw = 30
-        jx, jy = lx - jw - 8, ly
-        self._log_zone = (jx, jy, jx + jw, jy + lh)
-        jhov = self.hover == "logbtn"
-        c.create_image(jx + jw // 2, jy + lh // 2,
-                       image=self._flat("logbtn" + ("_h" if jhov else ""), jw, lh,
-                                        (22, 30, 34, 235) if jhov else (14, 20, 23, 210), radius=12))
-        c.create_text(jx + jw // 2, jy + lh // 2 - 1, text="▤",
-                      fill=accent if jhov else "#7A948A", font=(self.FONT, 12))
+    def _discord_count(self):
+        if self._discord is None:
+            return ""
+        total, _ = self._discord
+        return format(int(total), ",").replace(",", " ") + " " + self.T("members")
 
+    def _skin_head(self, size):
+        """tête du skin (calque chapeau compris) pour le chip joueur."""
+        try:
+            mtime = int(os.path.getmtime(self._skin_path()))
+        except Exception:
+            return None
+        key = ("head", mtime, size)
+        if key not in self._img_cache:
+            try:
+                sk = Image.open(self._skin_path()).convert("RGBA")
+                head = sk.crop((8, 8, 16, 16))
+                hat = sk.crop((40, 8, 48, 16))
+                head.alpha_composite(hat)
+                head = head.resize((size, size), Image.NEAREST)
+                self._img_cache[key] = ImageTk.PhotoImage(head)
+            except Exception:
+                return None
+        return self._img_cache[key]
+
+    # ── page Accueil : la fiche du jeu sélectionné ─────────────────────
+    def _draw_home(self, c, g, accent):
         # ── news du jeu (catalogue distant → modifiable sans rebuild)
         news = GT(g, "news", self.lang, [])
         if news:
             news = news[:4]
             nw, nh = 350, 40 + 18 * len(news)
-            nx, ny = SIDEBAR + 34, H - nh - 34
+            nx, ny = SIDEBAR + 34, FEAT_TOP - 34 - nh
             c.create_image(nx + nw // 2, ny + nh // 2,
                            image=self._flat("news" + g["id"] + str(len(news)), nw, nh,
                                             (10, 15, 17, 205), radius=16))
@@ -918,69 +1542,95 @@ del "%~f0"
                 c.create_text(nx + 18, ny + 40 + i * 18, anchor="w", text="•  " + line,
                               fill="#C8DCD0", font=self.F(9))
 
+        # ── rangée « en une » : 3 projets phares, en contenu et non en menu
+        fx = SIDEBAR + 34
+        c.create_text(fx, FEAT_TOP - 16, anchor="w", text=self.T("featured"),
+                      fill="#7A948A", font=self.F(9, True))
+        for slot, i in enumerate(self._featured()):
+            game = GAMES[i]
+            x = fx + slot * (FEAT_W + FEAT_GAP)
+            sel = i == self.selected
+            hov = self.hover == ("game", i)
+            moving = []
+            if sel:
+                moving.append((c.create_image(
+                    x + FEAT_W // 2, FEAT_TOP + FEAT_H // 2,
+                    image=self._flat("featsel" + game["id"], FEAT_W + 6, FEAT_H + 6,
+                                     self._hex(accent) + (255,), radius=14)),
+                    x + FEAT_W // 2, FEAT_TOP + FEAT_H // 2))
+            moving.append((c.create_image(
+                x + FEAT_W // 2, FEAT_TOP + FEAT_H // 2,
+                image=self._cover(game, FEAT_W, FEAT_H,
+                                  dim=1.0 if sel else (0.86 if hov else 0.62))),
+                x + FEAT_W // 2, FEAT_TOP + FEAT_H // 2))
+            # boîte large : les wordmarks très étirés (Glaivolver) restaient
+            # illisibles à 30 px de haut.
+            lgx, lgy = x + 14 + 65, FEAT_TOP + FEAT_H - 28
+            logo = c.create_image(lgx, lgy,
+                                  image=self._load(game["logo"], size=(130, 42),
+                                                   dim=1.0 if (sel or hov) else 0.85))
+            if sel:
+                # signature maison : le logo du projet en cours respire
+                self._feat_logo = logo
+                self._feat_logo_base = (lgx, lgy)
+                self._feat_logo_key = ("feat", i)
+            else:
+                moving.append((logo, lgx, lgy))
+            self._card_anim.append((("feat", i), moving, CARD_LIFT if hov else 0))
+            self._game_zones.append((x, FEAT_TOP, x + FEAT_W, FEAT_TOP + FEAT_H, i))
+
         # ── colonne droite : carte info, pseudo, JOUER, progression
         cw = 280
         cx = W - cw - 34
 
         # carte info (verre)
-        cy = H - 330
-        card = self._flat("card", cw, 116, (14, 20, 24, 216), radius=16)
-        c.create_image(cx + cw // 2, cy + 58, image=card)
-        mini = self._load(g["logo"], size=(82, 54))
-        c.create_image(cx + 52, cy + 34, image=mini)
+        # Le projet, rien que le projet : le Discord et le compteur de membres
+        # sont IDENTIQUES pour tous les projets, ils sont passés dans le menu
+        # profil où ils ne se répètent plus.
+        cy = H - 306
+        card = self._flat("card2", cw, 92, (14, 20, 24, 216), radius=16)
+        c.create_image(cx + cw // 2, cy + 46, image=card)
+        mini = self._load(g["logo"], size=(112, 52))
+        c.create_image(cx + 68, cy + 46, image=mini)
         lbl, lcol = self._online_label(g)
-        self._dot_item = c.create_oval(cx + 112, cy + 20, cx + 120, cy + 28, fill=lcol, width=0)
-        self._online_item = c.create_text(cx + 128, cy + 24, anchor="w", text=lbl,
+        self._dot_item = c.create_oval(cx + 136, cy + 24, cx + 144, cy + 32, fill=lcol, width=0)
+        self._online_item = c.create_text(cx + 152, cy + 28, anchor="w", text=lbl,
                                           fill=lcol, font=self.F(10, True))
-        c.create_text(cx + 112, cy + 48, anchor="w", text=GT(g, "tagline", self.lang)[:44],
-                      fill="#9AB0A4", font=self.F(8), width=156)
-        bw2, bh2 = cw - 24, 32
-        bx0, by0 = cx + 12, cy + 116 - bh2 - 12
-        self._discord_zone = (bx0, by0, bx0 + bw2, by0 + bh2)
-        self._discord_frames = self._btn_frames("discord", bw2, bh2, "#5865F2", 12)
-        hovd = 1.0 if self.hover == "discord" else 0.0
-        c.create_image(bx0 + bw2 // 2, by0 + bh2 // 2,
-                       image=self._discord_frames[round(hovd * 7)])
-        c.create_image(bx0 + 24, by0 + bh2 // 2, image=self._load("assets/discord_mark.png", size=(20, 15)))
-        c.create_text(bx0 + bw2 // 2 + 8, by0 + bh2 // 2, text=self.T("discord"),
-                      fill="white", font=self.F(10, True))
+        # pas de troncature : Tk coupe aux mots avec `width`, alors qu'un [:44]
+        # tranchait en plein milieu (« survis, navigue, pil »).
+        c.create_text(cx + 136, cy + 42, anchor="nw", text=GT(g, "tagline", self.lang),
+                      fill="#9AB0A4", font=self.F(8), width=138)
 
-        # ── pastille membres Discord (live) ─────────────────────────────
-        if self._discord is not None:
-            total, dco = self._discord
-
-            def _fmt(n):
-                return format(int(n), ",").replace(",", " ")
-
-            dy = by0 + bh2 + 15
-            f8 = tkfont.Font(family=self.FONT, size=8, weight="bold")
-            members_txt = _fmt(total) + " " + self.T("members")
-            if dco is not None:
-                online_txt = _fmt(dco) + " " + self.T("players")
-                wm = f8.measure(members_txt)
-                wo = f8.measure(online_txt)
-                total_w = wm + 22 + wo   # membres + (point + espaces) + en ligne
-                x = cx + cw // 2 - total_w // 2
-                c.create_text(x, dy, text=members_txt, anchor="w",
-                              fill="#8AA7FF", font=self.F(8, True))
-                dotx = x + wm + 10
-                c.create_oval(dotx, dy - 3, dotx + 6, dy + 3, fill="#5AE68C", width=0)
-                c.create_text(dotx + 12, dy, text=online_txt, anchor="w",
-                              fill="#5AE68C", font=self.F(8, True))
-            else:
-                c.create_text(cx + cw // 2, dy, text=members_txt,
-                              fill="#8AA7FF", font=self.F(8, True))
+        # (compteur de membres Discord : maintenant dans le menu profil)
 
         # pseudo (pilule verre, champ dessiné à la main)
+        # Le champ ne disait pas qu'il était cliquable : le focus ne changeait
+        # aucune couleur. Survol = fond plus clair + liseré, focus = liseré
+        # accent plein, et un crayon en permanence.
         iy = H - 164
         self._input_zone = (cx, iy - 19, cx + cw, iy + 19)
+        phov = self.hover == "pseudo"
+        if self.pseudo_focus or phov:
+            c.create_image(cx + cw // 2, iy,
+                           image=self._flat(
+                               "inring" + g["id"] + ("f" if self.pseudo_focus else "h"),
+                               cw + 4, 42,
+                               self._hex(accent) + (255 if self.pseudo_focus else 140,),
+                               radius=14))
+        light = phov and not self.pseudo_focus
         c.create_image(cx + cw // 2, iy,
-                       image=self._flat("input" + ("_f" if self.pseudo_focus else ""),
-                                        cw, 38, (12, 18, 21, 255), radius=12))
-        self._input_text = c.create_text(cx + cw // 2, iy, text=self.pseudo_text,
+                       image=self._flat("input" + ("_h" if light else ""), cw, 38,
+                                        (21, 29, 33, 255) if light else (12, 18, 21, 255),
+                                        radius=12))
+        self._input_text = c.create_text(cx + cw // 2 - 12, iy, text=self.pseudo_text,
                                          fill="#EAF6EF", font=self.F(12, True))
-        self._input_cursor = c.create_rectangle(0, 0, 0, 0, fill="#5AE68C", width=0)
-        c.create_text(cx + cw // 2, iy - 30, text=self.T("pseudo"), fill="#7A948A", font=self.F(8, True))
+        self._input_cursor = c.create_rectangle(0, 0, 0, 0, fill=accent, width=0)
+        c.create_text(cx + cw - 22, iy, text="✎",
+                      fill=accent if (phov or self.pseudo_focus) else "#5E7268",
+                      font=(self.FONT, 12))
+        c.create_text(cx + cw // 2, iy - 30, text=self.T("pseudo"),
+                      fill=accent if (phov or self.pseudo_focus) else "#7A948A",
+                      font=self.F(8, True))
 
         # JOUER + ⚙ options (séparées par jeu)
         ph2 = 54
@@ -1001,13 +1651,6 @@ del "%~f0"
                                         radius=12))
         c.create_text(gx + 27, py0 + ph2 // 2, text="⚙", fill="#C8D8CC", font=(self.FONT, 19))
 
-        if self.options_open:
-            self._draw_options(c, g)
-        if self.skin_open:
-            self._draw_skin(c, g)
-        if self.log_open:
-            self._draw_log(c, g)
-
         # progression + statut
         bw3, bh3 = cw, 5
         by3 = H - 39
@@ -1017,6 +1660,338 @@ del "%~f0"
         self._bar_fill = c.create_rectangle(cx, by3, cx, by3 + bh3, fill=accent, width=0)
         self._status_item = c.create_text(cx + cw // 2, by3 - 14, text=self.status.get(),
                                           fill="#C8D8CC", font=self.F(8), width=cw)
+
+    # ── cartes : visuel recadré, coins arrondis, dégradé bas ───────────
+    def _round_mask(self, w, h, radius):
+        ck = ("rmask", w, h, radius)
+        if ck not in self._img_cache:
+            S = 4
+            m = Image.new("L", (w * S, h * S), 0)
+            ImageDraw.Draw(m).rounded_rectangle((0, 0, w * S - 1, h * S - 1),
+                                                radius=radius * S, fill=255)
+            self._img_cache[ck] = m.resize((w, h), Image.LANCZOS)
+        return self._img_cache[ck]
+
+    def _cover(self, game, w, h, dim=1.0, radius=12):
+        """visuel de carte : `card_url` du catalogue sinon recadrage du key-art."""
+        src = game.get("card") or game["bg"]
+        ck = ("cover", src, w, h, dim, radius)
+        if ck in self._img_cache:
+            return self._img_cache[ck]
+        try:
+            im = Image.open(self._asset_path(src)).convert("RGB")
+        except Exception:
+            im = Image.new("RGB", (w, h), (18, 24, 26))
+        r = max(w / im.width, h / im.height)
+        im = im.resize((max(w, int(im.width * r) + 1), max(h, int(im.height * r) + 1)),
+                       Image.LANCZOS)
+        x0, y0 = (im.width - w) // 2, (im.height - h) // 2
+        im = im.crop((x0, y0, x0 + w, y0 + h))
+        if dim < 1.0:
+            im = ImageEnhance.Brightness(im).enhance(dim)
+        # dégradé sombre en pied de carte, pour que le logo reste lisible
+        sh = Image.new("L", (1, h), 0)
+        sd = ImageDraw.Draw(sh)
+        for y in range(h):
+            t = max(0.0, (y - h * 0.42) / (h * 0.58))
+            sd.point((0, y), fill=int(225 * t * t))
+        im = Image.composite(Image.new("RGB", (w, h), (5, 8, 9)), im, sh.resize((w, h)))
+        im = im.convert("RGBA")
+        im.putalpha(self._round_mask(w, h, radius))
+        self._img_cache[ck] = ImageTk.PhotoImage(im)
+        return self._img_cache[ck]
+
+    # ── page Bibliothèque : la grille qui absorbe 20 projets ───────────
+    def _lib_matches(self):
+        q = self.lib_query.strip().lower()
+        out = []
+        for i, g in enumerate(GAMES):
+            if q and q not in (g["name"] + " "
+                               + str(GT(g, "tagline", self.lang, ""))).lower():
+                continue
+            if self.lib_filter == "installed" \
+                    and not self._state().get("mod_" + g["base"].rsplit("/", 1)[1]):
+                continue
+            if self.lib_filter == "online" and not isinstance(
+                    self._online.get(g["id"]), int):
+                continue
+            out.append(i)
+        return out
+
+    def _draw_filters(self, c, y, accent):
+        """Tous / Installés / En ligne — indispensable passé quelques projets."""
+        self._filter_zones = []
+        x = SIDEBAR + 34
+        for key in LIB_FILTERS:
+            label = self.T("f_" + key)
+            fw = 26 + tkfont.Font(family=self.FONT, size=8, weight="bold").measure(label)
+            on = self.lib_filter == key
+            hov = self.hover == ("filter", key)
+            c.create_image(x + fw // 2, y + 13,
+                           image=self._flat("flt%s%d%d" % (fw, on, hov), fw, 26,
+                                            self._hex(accent) + (255,) if on
+                                            else ((24, 33, 31, 235) if hov else (15, 21, 24, 215)),
+                                            radius=13))
+            c.create_text(x + fw // 2, y + 13, text=label,
+                          fill="#06140C" if on else ("#EAF6EF" if hov else "#8AA49A"),
+                          font=self.F(8, True))
+            self._filter_zones.append((x, y, x + fw, y + 26, key))
+            x += fw + 8
+
+    def _band(self, top=104):
+        """bande de contenu défilable, commune aux pages en liste."""
+        return SIDEBAR + 34, top, W - 34, H - 30
+
+    def _draw_library(self, c, accent):
+        x0, top, x1, bottom = self._band(136)
+        matches = self._lib_matches()
+
+        rows = max(1, (len(matches) + CARD_COLS - 1) // CARD_COLS)
+        span = max(0, rows * CARD_PITCH - (bottom - top))
+        off = self.scroll["library"] = max(0, min(self.scroll["library"], span))
+
+        for k, i in enumerate(matches):
+            game = GAMES[i]
+            cx = x0 + (k % CARD_COLS) * (CARD_W + CARD_GAP)
+            cy = top + (k // CARD_COLS) * CARD_PITCH - off
+            if cy > bottom or cy + CARD_PITCH < top:
+                continue      # hors bande : rien à dessiner
+            sel = i == self.selected
+            hov = self.hover == ("game", i)
+            moving = []
+            if sel or hov:
+                moving.append((c.create_image(
+                    cx + CARD_W // 2, cy + CARD_H // 2,
+                    image=self._flat("cardsel" + game["id"] + ("s" if sel else "h"),
+                                     CARD_W + 6, CARD_H + 6,
+                                     self._hex(accent if sel else "#5E7A70") + (255,),
+                                     radius=15)), cx + CARD_W // 2, cy + CARD_H // 2))
+            moving.append((c.create_image(cx + CARD_W // 2, cy + CARD_H // 2,
+                                          image=self._cover(game, CARD_W, CARD_H,
+                                                            dim=1.0 if (sel or hov) else 0.7)),
+                           cx + CARD_W // 2, cy + CARD_H // 2))
+            moving.append((c.create_image(cx + CARD_W // 2, cy + CARD_H - 32,
+                                          image=self._load(game["logo"], size=(134, 46),
+                                                           dim=1.0 if (sel or hov) else 0.9)),
+                           cx + CARD_W // 2, cy + CARD_H - 32))
+            self._card_anim.append((("lib", i), moving, CARD_LIFT if hov else 0))
+
+            c.create_text(cx, cy + CARD_H + 16, anchor="w", text=game["name"],
+                          fill="#EAF6EF" if (sel or hov) else "#C8D8CC", font=self.F(9, True))
+            ver = self._mod_version(game)
+            known = ver != self.T("log_unknown")
+            n = self._online.get(game["id"])
+            if self._has_update(game):
+                badge, bcol = "↑ " + self.T("update_avail"), accent
+            elif isinstance(n, int):
+                badge, bcol = f"● {n} {self.T('players')}", "#5AE68C"
+            elif known:
+                badge, bcol = f"{self.T('installed')} · {ver}", "#7A948A"
+            else:
+                badge, bcol = self.T("not_installed"), "#5E7268"
+            c.create_text(cx, cy + CARD_H + 32, anchor="w", text=badge[:22],
+                          fill=bcol, font=self.F(8))
+            self._game_zones.append((cx, max(top, cy), cx + CARD_W,
+                                     min(bottom, cy + CARD_H), i))
+
+        if not matches:
+            c.create_text((x0 + x1) // 2, top + 120, text=self.T("no_results"),
+                          fill="#6A7E74", font=self.F(11))
+        self._scrollbar(c, x1 + 8, top, bottom, span, off, accent)
+
+        # en-tête dessiné après la grille : il recouvre le débord du défilement
+        c.create_image(0, 0, anchor="nw", image=self._header_band(128))
+        c.create_text(x0, 44, anchor="w", text=self.T("nav_library"),
+                      fill="#EAF6EF", font=self.F(17, True))
+        c.create_text(x0, 70, anchor="w", text=self.T("lib_sub", n=len(GAMES)),
+                      fill="#7A948A", font=self.F(9))
+        self._draw_filters(c, 92, accent)
+        self._draw_search(c, accent)
+
+    def _header_band(self, h=96):
+        """bandeau opaque du haut de page (masque la grille qui défile dessous)."""
+        key = ("hband", h)
+        if key not in self._img_cache:
+            im = Image.new("RGBA", (W, h), (0, 0, 0, 0))
+            d = ImageDraw.Draw(im)
+            for y in range(h):
+                a = 255 if y < h - 18 else int(255 * (1 - (y - (h - 18)) / 18.0))
+                d.line((0, y, W, y), fill=(9, 12, 14, a))
+            self._img_cache[key] = ImageTk.PhotoImage(im)
+        return self._img_cache[key]
+
+    def _draw_search(self, c, accent):
+        sw, sh = 240, 34
+        sx, sy = W - sw - 270, 28   # à gauche du chip joueur et de la langue
+        self._search_zone = (sx, sy, sx + sw, sy + sh)
+        c.create_image(sx + sw // 2, sy + sh // 2,
+                       image=self._flat("search" + ("_f" if self.lib_focus else ""), sw, sh,
+                                        (18, 26, 29, 245) if self.lib_focus else (13, 19, 22, 225),
+                                        radius=12))
+        c.create_text(sx + 18, sy + sh // 2, text="⌕",
+                      fill=accent if self.lib_focus else "#6A7E74", font=(self.FONT, 13))
+        self._search_item = c.create_text(
+            sx + 34, sy + sh // 2, anchor="w",
+            text=self.lib_query or self.T("search"),
+            fill="#EAF6EF" if self.lib_query else "#5E7268", font=self.F(9))
+
+    def _scrollbar(self, c, x, top, bottom, span, off, accent):
+        if span <= 0:
+            return
+        c.create_rectangle(x, top, x + 4, bottom, fill="#131B1D", width=0)
+        h = bottom - top
+        th = max(30, int(h * h / (h + span)))
+        ty = top + int((h - th) * (off / span))
+        c.create_rectangle(x, ty, x + 4, ty + th, fill=accent, width=0)
+
+    # ── page Nouveautés : les news de tous les projets d'un coup ────────
+    def _draw_news(self, c, accent):
+        x0, top, x1, bottom = self._band()
+        rowsp, y = [], 0
+        for i, g in enumerate(GAMES):
+            lines = (GT(g, "news", self.lang, []) or [])[:4]
+            rowsp.append((i, g, lines, 44 + 20 * len(lines)))
+            y += 44 + 20 * len(lines) + 14
+        span = max(0, y - 14 - (bottom - top))
+        off = self.scroll["news"] = max(0, min(self.scroll["news"], span))
+
+        rw = x1 - x0
+        cy = top - off
+        for i, g, lines, rh in rowsp:
+            if cy + rh >= top and cy <= bottom:
+                hov = self.hover == ("game", i)
+                c.create_image(x0 + rw // 2, cy + rh // 2,
+                               image=self._flat("nrow%d%d" % (rh, hov), rw, rh,
+                                                (16, 23, 26, 240) if hov else (12, 17, 20, 225),
+                                                radius=14))
+                c.create_image(x0 + 82, cy + 26, image=self._load(g["logo"], size=(122, 40)))
+                c.create_rectangle(x0 + 20, cy + 14, x0 + 23, cy + 38,
+                                   fill=g["accent"], width=0)
+                for k, line in enumerate(lines):
+                    c.create_text(x0 + 152, cy + 26 + k * 20, anchor="w", text="•  " + line,
+                                  fill="#C8DCD0", font=self.F(9))
+                if not lines:
+                    c.create_text(x0 + 152, cy + 26, anchor="w", text="—",
+                                  fill="#5E7268", font=self.F(9))
+                self._game_zones.append((x0, max(top, cy), x0 + rw,
+                                         min(bottom, cy + rh), i))
+            cy += rh + 14
+
+        self._scrollbar(c, x1 + 8, top, bottom, span, off, accent)
+        c.create_image(0, 0, anchor="nw", image=self._header_band())
+        c.create_text(x0, 44, anchor="w", text=self.T("nav_news"),
+                      fill="#EAF6EF", font=self.F(17, True))
+        c.create_text(x0, 70, anchor="w", text=self.T("news_sub"),
+                      fill="#7A948A", font=self.F(9))
+
+    # ── page Téléchargements : le job en cours + l'état des installs ────
+    def _draw_downloads(self, c, accent):
+        x0, top, x1, bottom = self._band()
+        rw = x1 - x0
+        g = GAMES[self.selected]
+
+        # la liste d'abord : la carte du job en cours est peinte par-dessus et
+        # masque le débord, comme le bandeau d'en-tête des autres pages.
+        list_top = top + 112
+        span = max(0, len(GAMES) * 56 - 14 - (bottom - list_top))
+        off = self.scroll["downloads"] = max(0, min(self.scroll["downloads"], span))
+        y = list_top - off
+        for i, game in enumerate(GAMES):
+            if y + 48 >= top and y <= bottom:
+                hov = self.hover == ("game", i)
+                c.create_image(x0 + rw // 2, y + 24,
+                               image=self._flat("dlrow%d" % hov, rw, 48,
+                                                (16, 23, 26, 235) if hov else (11, 16, 19, 215),
+                                                radius=12))
+                c.create_image(x0 + 66, y + 24, image=self._load(game["logo"], size=(100, 34)))
+                ver = self._mod_version(game)
+                known = ver != self.T("log_unknown")
+                c.create_text(x0 + 128, y + 24, anchor="w",
+                              text=(self.T("installed") + " · " + ver) if known
+                              else self.T("not_installed"),
+                              fill="#C8DCD0" if known else "#5E7268", font=self.F(9))
+                c.create_text(x1 - 24, y + 24, anchor="e", text=game["dir"],
+                              fill="#4E6058", font=self.F(8))
+                self._game_zones.append((x0, max(list_top, y), x0 + rw,
+                                         min(bottom, y + 48), i))
+            y += 56
+        self._scrollbar(c, x1 + 8, list_top, bottom, span, off, accent)
+
+        c.create_image(x0 + rw // 2, top + 44,
+                       image=self._flat("dlcur", rw, 88, (13, 19, 22, 252), radius=14))
+        if self.busy:
+            c.create_image(x0 + 66, top + 34, image=self._load(g["logo"], size=(92, 30)))
+            c.create_text(x0 + 132, top + 26, anchor="w", text=self.T("dl_current"),
+                          fill=accent, font=self.F(9, True))
+            c.create_text(x0 + 132, top + 44, anchor="w", text=self.status.get(),
+                          fill="#C8DCD0", font=self.F(9), width=rw - 200)
+            bw, bh = rw - 48, 5
+            bx, by = x0 + 24, top + 68
+            c.create_image(bx + bw // 2, by + bh // 2,
+                           image=self._flat("dltrack", bw, bh, (255, 255, 255, 26), radius=2))
+            self._bar_geom = (bx, by, bw, bh)
+            self._bar_fill = c.create_rectangle(bx, by, bx, by + bh, fill=accent, width=0)
+            self._status_item = c.create_text(x1 - 24, top + 26, anchor="e", text="",
+                                              fill="#7A948A", font=self.F(8))
+        else:
+            c.create_text(x0 + rw // 2, top + 44, text=self.T("dl_empty"),
+                          fill="#6A7E74", font=self.F(10))
+
+        c.create_image(0, 0, anchor="nw", image=self._header_band())
+        c.create_text(x0, 44, anchor="w", text=self.T("nav_dl"),
+                      fill="#EAF6EF", font=self.F(17, True))
+        c.create_text(x0, 70, anchor="w", text=self.T("dl_sub"),
+                      fill="#7A948A", font=self.F(9))
+
+    # ── UI de chargement : ce que le joueur voit au lieu d'un terminal ──
+    def _mix(self, hexcol, a):
+        """couleur accent fondue vers le fond, pour un battement doux."""
+        r, g, b = self._hex(hexcol)
+        return "#%02x%02x%02x" % (int(r * a + 12 * (1 - a)),
+                                  int(g * a + 18 * (1 - a)),
+                                  int(b * a + 16 * (1 - a)))
+
+    def _draw_installing(self, c, g):
+        acc = g["accent"]
+        pw, ph = 520, 176
+        px, py = SIDEBAR + (W - SIDEBAR) // 2 - pw // 2, H // 2 - ph // 2
+        c.create_image(0, 0, anchor="nw", image=self._dim_overlay())
+        c.create_image(px + pw // 2, py + ph // 2,
+                       image=self._flat("instpanel", pw, ph, (13, 18, 21, 251), radius=18))
+        c.create_image(px + 24 + 66, py + 26 + 44, image=self._cover(g, 132, 88, radius=12))
+
+        tx = px + 24 + 132 + 22
+        c.create_text(tx, py + 30, anchor="w",
+                      text=self.T("updating" if self.autoupdating else "installing"),
+                      fill=acc, font=self.F(8, True))
+        c.create_text(tx, py + 52, anchor="w", text=g["name"],
+                      fill="#EAF6EF", font=self.F(14, True))
+        self._inst_pct = c.create_text(px + pw - 26, py + 46, anchor="e", text="",
+                                       fill=acc, font=self.F(15, True))
+        self._inst_status = c.create_text(tx, py + 78, anchor="w", text=self.status.get(),
+                                          fill="#9AB0A4", font=self.F(9), width=pw - 210)
+
+        # trois points qui battent : la seule preuve visuelle « ça travaille »
+        self._inst_dots = [c.create_oval(tx + k * 12 - 3, py + 102 - 3,
+                                         tx + k * 12 + 3, py + 102 + 3,
+                                         fill=acc, width=0) for k in range(3)]
+
+        bw, bh = pw - 48, 6
+        bx, by = px + 24, py + ph - 62
+        c.create_image(bx + bw // 2, by + bh // 2,
+                       image=self._flat("insttrack", bw, bh, (255, 255, 255, 28), radius=3))
+        self._inst_geom = (bx, by, bw, bh)
+        self._inst_bar = c.create_rectangle(bx, by, bx, by + bh, fill=acc, width=0)
+
+        cw2, ch2 = 132, 32
+        cx2, cy2 = px + pw - 24 - cw2, py + ph - 44
+        self._instcancel_zone = (cx2, cy2, cx2 + cw2, cy2 + ch2)
+        hov = self.hover == "instcancel"
+        c.create_image(cx2 + cw2 // 2, cy2 + ch2 // 2,
+                       image=self._flat("instcancel" + ("_h" if hov else ""), cw2, ch2,
+                                        (52, 28, 30, 255) if hov else (26, 33, 31, 238), radius=10))
+        c.create_text(cx2 + cw2 // 2, cy2 + ch2 // 2, text=self.T("cancel"),
+                      fill="#F2CACA" if hov else "#B8C8BE", font=self.F(9, True))
 
     # ── options par jeu ───────────────────────────────────────────────
     def _opts(self, g):
@@ -1054,7 +2029,7 @@ del "%~f0"
     def _draw_studio_tooltip(self, c):
         """bulle au survol du logo studio : rôle + bouton Voir le site."""
         tw, th = 236, 92
-        tx, ty = 20, H - 46 - th - 10
+        tx, ty = 20, self._studio_zone[3] + 10   # le logo est en haut du rail
         c.create_image(tx + tw // 2, ty + th // 2,
                        image=self._flat("stt", tw, th, (16, 22, 26, 248), radius=14))
         c.create_image(tx + 26, ty + 24, image=self._load("assets/studio_icon.png", size=(24, 24)))
@@ -1509,15 +2484,20 @@ del "%~f0"
         self._log_render()
 
     def _log_wheel(self, e):
-        if not self.log_open:
-            return
+        """molette : console du Journal si ouverte, sinon défilement de la page."""
         if getattr(e, "num", None) == 4:
             step = 3
         elif getattr(e, "num", None) == 5:
             step = -3
         else:
             step = 3 if e.delta > 0 else -3
-        self._log_scroll_by(step)
+        if self.log_open:
+            self._log_scroll_by(step)
+        elif self.page in self.scroll:
+            before = self.scroll[self.page]
+            self.scroll[self.page] = max(0, before - step * 22)
+            if self.scroll[self.page] != before:
+                self._draw()
 
     def _log_drag(self, e):
         """glissement dans la console ; sinon on retombe sur le survol normal."""
@@ -1558,6 +2538,35 @@ del "%~f0"
             elif e.keysym in ("Prior", "Next", "Up", "Down"):
                 self._log_scroll_by({"Prior": 10, "Up": 1, "Next": -10, "Down": -1}[e.keysym])
             return
+        if (e.state & 0x0004) and e.keysym.lower() == "f":   # Ctrl+F : rechercher
+            if self.page != "library":
+                self._goto("library")
+            self.lib_focus = True
+            self._draw()
+            return
+        if self.lib_focus:   # recherche de la Bibliothèque
+            if e.keysym == "BackSpace":
+                self.lib_query = self.lib_query[:-1]
+            elif e.keysym == "Escape":
+                self.lib_focus, self.lib_query = False, ""
+            elif e.keysym == "Return":
+                self.lib_focus = False
+            elif e.char and e.char.isprintable() and len(self.lib_query) < 24:
+                self.lib_query += e.char
+            else:
+                return
+            self.scroll["library"] = 0
+            self._draw()
+            return
+        if e.keysym == "Escape" and self.page != "home" \
+                and not (self.options_open or self.skin_open):
+            self._goto("home")
+            return
+        if not self.pseudo_focus and not (self.options_open or self.skin_open) \
+                and e.keysym in ("Left", "Right") and len(GAMES) > 1:
+            step = -1 if e.keysym == "Left" else 1
+            self._pick_game((self.selected + step) % len(GAMES))
+            return
         if self.skin_open and self.skin_focus:
             if e.keysym == "BackSpace":
                 self.skin_input = self.skin_input[:-1]
@@ -1589,6 +2598,10 @@ del "%~f0"
 
     def _click(self, e):
         g = GAMES[self.selected]
+        if self.busy:   # UI de chargement : modale, seul ANNULER répond
+            if self._hit(self._instcancel_zone, e.x, e.y):
+                self._cancel = True
+            return
         if self.lang_open:   # menu langue ouvert : capte tout
             picked = None
             for (x0, y0, x1, y1, code) in getattr(self, "_lang_rows", []):
@@ -1601,12 +2614,37 @@ del "%~f0"
             self.lang_open = False
             self._draw()
             return
-        if self._hit(self._lang_zone, e.x, e.y):
-            self.lang_open = True
+        if self.prof_open:   # menu profil : modal, il capte tout
+            hit = None
+            for (x0, y0, x1, y1, key) in self._prof_zones:
+                if x0 <= e.x <= x1 and y0 <= e.y <= y1:
+                    hit = key
+                    break
+            if hit == "pseudo":
+                self.prof_open = False
+                self.page = "home"
+                self.pseudo_focus = True
+            elif hit == "skin":
+                self.prof_open = False
+                self.skin_open = True
+                self.skin_status = ""
+            elif hit == "lang":
+                self.lang_open = True
+            elif hit == "discord":
+                self.prof_open = False
+                webbrowser.open(GAMES[self.selected].get("discord",
+                                                         "https://playechelon.net"))
+            elif hit == "site":
+                self.prof_open = False
+                webbrowser.open("https://studioechelon.fr")
+            elif not self._hit(self._chip_zone, e.x, e.y):
+                self.prof_open = False   # clic ailleurs : on referme
             self._draw()
             return
-        if hasattr(self, "_log_zone") and self._hit(self._log_zone, e.x, e.y):
-            self._log_show()
+        if self._hit(self._chip_zone, e.x, e.y):
+            self.prof_open = True
+            self.lib_focus = False
+            self._draw()
             return
         if self.log_open:   # modal : la page Journal capte tout
             if self._hit(self._logcopy_zone, e.x, e.y):
@@ -1642,10 +2680,31 @@ del "%~f0"
                 self.options_open = False
             self._draw()
             return
-        for (x0, y0, x1, y1, i) in self._logo_zones:
+        for (x0, y0, x1, y1, key) in self._nav_zones:
             if x0 <= e.x <= x1 and y0 <= e.y <= y1:
-                self._select(i)
+                if key == "log":
+                    self._log_show()
+                else:
+                    self._goto(key)
                 return
+        for (x0, y0, x1, y1, key) in self._filter_zones:
+            if x0 <= e.x <= x1 and y0 <= e.y <= y1:
+                self.lib_filter = key
+                self.scroll["library"] = 0
+                self._draw()
+                return
+        for (x0, y0, x1, y1, i) in self._game_zones:
+            if x0 <= e.x <= x1 and y0 <= e.y <= y1:
+                self._pick_game(i)
+                return
+        if self._hit(self._search_zone, e.x, e.y):
+            self.lib_focus = True
+            self.pseudo_focus = False
+            self._draw()
+            return
+        if self.lib_focus:
+            self.lib_focus = False
+            self._draw()
         was_focus = self.pseudo_focus
         self.pseudo_focus = self._hit(self._input_zone, e.x, e.y)
         if self.pseudo_focus != was_focus and not self.pseudo_focus:
@@ -1660,15 +2719,33 @@ del "%~f0"
         elif self._hit(self._gear_zone, e.x, e.y):
             self.options_open = True
             self._draw()
-        elif self._hit(self._discord_zone, e.x, e.y):
-            webbrowser.open(GAMES[self.selected]["discord"])
         elif hasattr(self, "_site_zone") and self.hover == "studio_site" \
                 and self._hit(self._site_zone, e.x, e.y):
             webbrowser.open("https://studioechelon.fr")
 
+    def _zone_hover(self, e):
+        """zones listées : filtres, sections du rail, cartes de jeu."""
+        for (x0, y0, x1, y1, key) in self._filter_zones:
+            if x0 <= e.x <= x1 and y0 <= e.y <= y1:
+                return ("filter", key)
+        for (x0, y0, x1, y1, key) in self._nav_zones:
+            if x0 <= e.x <= x1 and y0 <= e.y <= y1:
+                return ("nav", key)
+        for (x0, y0, x1, y1, i) in self._game_zones:
+            if x0 <= e.x <= x1 and y0 <= e.y <= y1:
+                return ("game", i)
+        return None
+
     def _motion(self, e):
         prev = self.hover
         self.hover = None
+        if self.busy:   # pendant l'install, seul ANNULER est survolable
+            if self._hit(self._instcancel_zone, e.x, e.y):
+                self.hover = "instcancel"
+            self.configure(cursor="hand2" if self.hover else "")
+            if prev != self.hover:
+                self._draw()
+            return
         if self.log_open:   # page Journal : curseur seulement, pas de redraw
             self.hover = prev
             over = any(self._hit(z, e.x, e.y) for z in
@@ -1680,8 +2757,15 @@ del "%~f0"
                 if x0 <= e.x <= x1 and y0 <= e.y <= y1:
                     self.hover = ("lang", code)
                     break
-            if not self._hit(self._lang_zone, e.x, e.y):
-                pass
+            self.configure(cursor="hand2" if self.hover else "")
+            if prev != self.hover:
+                self._draw()
+            return
+        if self.prof_open:   # menu profil : hover des lignes
+            for (x0, y0, x1, y1, key) in self._prof_zones:
+                if x0 <= e.x <= x1 and y0 <= e.y <= y1:
+                    self.hover = ("prof", key)
+                    break
             self.configure(cursor="hand2" if self.hover else "")
             if prev != self.hover:
                 self._draw()
@@ -1694,23 +2778,20 @@ del "%~f0"
             self.hover = "play"
         elif self._hit(self._gear_zone, e.x, e.y):
             self.hover = "gear"
-        elif self._hit(self._lang_zone, e.x, e.y):
-            self.hover = "lang"
-        elif hasattr(self, "_log_zone") and self._hit(self._log_zone, e.x, e.y):
-            self.hover = "logbtn"
-        elif self._hit(self._discord_zone, e.x, e.y):
-            self.hover = "discord"
+        elif self._hit(self._input_zone, e.x, e.y):
+            self.hover = "pseudo"
+        elif self._hit(self._search_zone, e.x, e.y):
+            self.hover = "search"
+        elif self._hit(self._chip_zone, e.x, e.y):
+            self.hover = "chip"
         elif self._hit(self._studio_zone, e.x, e.y) \
                 or (isinstance(prev, str) and prev.startswith("studio")
-                    and hasattr(self, "_site_zone")
-                    and self._hit((self._studio_zone[0], self._site_zone[1] - 12,
-                                   self._site_zone[2], self._studio_zone[3]), e.x, e.y)):
+                    and self._site_zone != NOZONE
+                    and self._hit((self._studio_zone[0], self._studio_zone[1],
+                                   self._site_zone[2], self._site_zone[3] + 12), e.x, e.y)):
             self.hover = "studio"
         else:
-            for (x0, y0, x1, y1, i) in self._logo_zones:
-                if x0 <= e.x <= x1 and y0 <= e.y <= y1:
-                    self.hover = ("logo", i)
-                    break
+            self.hover = self._zone_hover(e)
         self.configure(cursor="hand2" if self.hover else "")
         # les logos + discord + studio changent d'état par redraw
         if prev != self.hover and self._fading is None \
@@ -1718,7 +2799,9 @@ del "%~f0"
                      or (isinstance(prev, str) and prev.startswith("studio"))
                      or (isinstance(self.hover, str) and self.hover.startswith("studio"))
                      or "discord" in (prev, self.hover) or "gear" in (prev, self.hover)
-                     or "lang" in (prev, self.hover) or "logbtn" in (prev, self.hover)):
+                     or "lang" in (prev, self.hover) or "search" in (prev, self.hover)
+                     or "chip" in (prev, self.hover)
+                     or "pseudo" in (prev, self.hover)):
             self._draw()
 
     # ── persistance ───────────────────────────────────────────────────
