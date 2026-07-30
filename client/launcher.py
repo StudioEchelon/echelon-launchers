@@ -1072,6 +1072,16 @@ class Hub(tk.Tk):
                 with open(bat, "w") as f:
                     f.write(f'''@echo off
 set LOG={ulog}
+rem _MEIPASS2 est LA cause des relances ratees. Le bootloader onefile de
+rem PyInstaller pose cette variable pour son processus enfant ; elle est heritee
+rem par tout ce que l'app lance, donc par ce .bat, donc par le nouvel exe. Celui
+rem qui demarre croit alors etre deja extrait, saute l'extraction et cherche son
+rem python3xx.dll dans le dossier de l'ANCIENNE instance -- que l'ancienne vient
+rem de supprimer en mourant. D'ou "Failed to load Python DLL".
+set "_MEIPASS2="
+set "_PYI_APPLICATION_HOME_DIR="
+set "_PYI_ARCHIVE_FILE="
+set "_PYI_PARENT_PROCESS_LEVEL="
 echo [%date% %time%] mise a jour demarree >>"%LOG%"
 set n=0
 :retry
@@ -1102,10 +1112,16 @@ echo [%date% %time%] relance OK (essai %m%) >>"%LOG%"
 :fin
 del "%~f0"
 ''')
-                subprocess.Popen(["cmd", "/c", bat], creationflags=0x08000000)
+                # ceinture ET bretelles : on purge aussi l'environnement passe
+                # au .bat, pour ne pas dependre du seul `set` cote batch.
+                clean = {k: v for k, v in os.environ.items()
+                         if not k.startswith(("_MEI", "_PYI"))}
+                subprocess.Popen(["cmd", "/c", bat], creationflags=0x08000000,
+                                 env=clean)
             else:
                 os.replace(new, exe)
-                subprocess.Popen([exe])
+                subprocess.Popen([exe], env={k: v for k, v in os.environ.items()
+                                             if not k.startswith(("_MEI", "_PYI"))})
             return True
         except Exception:
             return False   # hors-ligne / erreur : on lance la version en place
