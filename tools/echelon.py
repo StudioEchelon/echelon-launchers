@@ -580,20 +580,34 @@ def cmd_client(args):
     if subprocess.call(["git", "-C", ROOT, "push"]) != 0:
         die("push échoué")
 
-    # 2) attendre le build Windows lancé par le push
+    # 2) attendre le build Windows DE CE COMMIT précisément.
+    # Filtrer sur le sha est vital : sans ça on peut ramasser l'artefact du push
+    # précédent, dont le CLIENT_VERSION est plus ancien. On publierait un exe
+    # marqué 1.5 avec un manifest annonçant 1.6 -> chaque client se mettrait a
+    # jour, redemarrerait, verrait 1.5 < 1.6... boucle infinie chez tout le monde.
+    head = subprocess.check_output(["git", "-C", ROOT, "rev-parse", "HEAD"],
+                                   text=True).strip()
     gh = gh_bin()
-    print("→ build Windows en cours…")
+    print("→ build Windows du commit %s…" % head[:8])
     run_id = None
-    for _ in range(60):
+    for _ in range(90):
         time.sleep(10)
         try:
             out = subprocess.check_output(
-                [gh, "run", "list", "--limit", "1", "--json",
-                 "databaseId,status,conclusion,headSha,name"], cwd=ROOT, text=True)
-            r = _json.loads(out)[0]
+                [gh, "run", "list", "--limit", "20", "--json",
+                 "databaseId,status,conclusion,headSha,name,workflowName"],
+                cwd=ROOT, text=True)
+            runs = [r for r in _json.loads(out)
+                    if r.get("headSha") == head
+                    and "build-windows-exe" in (r.get("workflowName", ""),
+                                                r.get("name", ""))]
         except Exception as e:
             print("   (%s)" % e)
             continue
+        if not runs:
+            print("   run pas encore enregistré…")
+            continue
+        r = runs[0]
         run_id = r["databaseId"]
         if r["status"] == "completed":
             if r["conclusion"] != "success":
@@ -603,7 +617,7 @@ def cmd_client(args):
             break
         print("   %s…" % r["status"])
     else:
-        die("délai dépassé en attendant le build")
+        die("délai dépassé en attendant le build de %s" % head[:8])
 
     # 3) récupérer l'exe et le publier avec son sha256
     tmp = tempfile.mkdtemp()
