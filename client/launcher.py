@@ -1096,20 +1096,12 @@ goto launch
 :moved
 echo [%date% %time%] exe remplace apres %n% essai(s) >>"%LOG%"
 :launch
-set m=0
-:again
-set /a m+=1
+rem UN SEUL start. Une version precedente reessayait 5 fois en verifiant via
+rem `tasklist | find`, mais ce test renvoyait un faux negatif : resultat, cinq
+rem instances du launcher lancees en parallele (constate). La vraie cause des
+rem relances ratees etait _MEIPASS2, purge plus haut.
+echo [%date% %time%] relance de {name} >>"%LOG%"
 start "" "{exe}"
-ping -n 4 127.0.0.1 >nul
-tasklist /FI "IMAGENAME eq {name}" | find /I "{name}" >nul
-if not errorlevel 1 goto ok
-echo [%date% %time%] relance ratee (essai %m%) >>"%LOG%"
-if %m% lss 5 goto again
-echo [%date% %time%] ECHEC de la relance >>"%LOG%"
-goto fin
-:ok
-echo [%date% %time%] relance OK (essai %m%) >>"%LOG%"
-:fin
 del "%~f0"
 ''')
                 # ceinture ET bretelles : on purge aussi l'environnement passe
