@@ -142,3 +142,52 @@ remplace, et chaque jeu compare `mod_version` avant de lancer.
 Lance le hub depuis les sources sur `catalog.json` local via la variable
 `ECHELON_CATALOG`. Dans ce mode le hub **n'écrit pas** dans le cache de catalogue,
 donc ton install de test ne se retrouve pas avec un catalogue non publié.
+
+## Réglages globaux — sans jamais republier l'exe
+
+Le bloc `config` de `catalog.json` déplace hors du binaire tout ce qui devait
+avant passer par un rebuild. `./echelon config` liste, `./echelon config <champ>
+<valeur>` modifie (chemin pointé accepté, `null` supprime).
+
+| Champ | Effet | Avant |
+| --- | --- | --- |
+| `mc_version` | version de Minecraft installée | figée dans l'exe |
+| `java_runtime` | runtime Java Mojang | figé dans l'exe |
+| `discord_invite` | invitation servant au compteur de membres | figée dans l'exe |
+| `site_url` | lien du studio | figé dans l'exe |
+| `ram.default` / `ram.min` / `ram.max` | bornes du réglage RAM | figées à 3 / 2 / 8 |
+| `announce.<langue>` | bandeau d'annonce dans le rail, visible sur toutes les pages | n'existait pas |
+| `text.<langue>.<clé>` | remplace n'importe quel libellé de l'interface | rebuild obligatoire |
+
+`mc_version` et `java_runtime` acceptent aussi une valeur **par projet** (dans
+l'entrée du jeu) : un projet peut passer en 1.21.4 sans toucher aux autres.
+
+Exemples :
+
+```sh
+./echelon config announce.fr "Maintenance du serveur a 21h"
+./echelon config announce.fr null          # retirer l'annonce
+./echelon config ram.max 12
+./echelon config text.fr.play "JOUER !"
+./echelon set glaivolver mc_version 1.21.4 # ce projet seulement
+```
+
+Un texte distant mal formé (accolade orpheline) ne casse rien : le hub retombe
+sur le libellé embarqué.
+
+## Publier une mise à jour du HUB
+
+Les exe des joueurs se remplacent seuls au démarrage suivant — **personne ne
+réinstalle jamais rien**.
+
+```sh
+./echelon client 1.6            # mode blanc : montre 1.5 -> 1.6, n'envoie rien
+./echelon client 1.6 --yes      # bump, commit, push, attend le build, publie
+```
+
+Refuse une version qui ne monte pas (les clients comparent `client_version`).
+Si le build Windows échoue, rien n'est publié et le message le dit.
+
+⚠️ `publish-client.sh` et `publish-launcher.sh` utilisent `sed -i ''`, syntaxe
+BSD/macOS : ils échouent sur GNU sed, donc sous Windows. `./echelon client` les
+remplace en portable.

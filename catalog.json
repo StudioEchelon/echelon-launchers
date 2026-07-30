@@ -96,5 +96,17 @@
   "small_asset": "echelon",
   "button_label": "Studio Echelon",
   "button_url": "https://playechelon.net"
+ },
+ "config": {
+  "mc_version": "1.21.1",
+  "java_runtime": "java-runtime-delta",
+  "discord_invite": "playharbor",
+  "site_url": "https://studioechelon.fr",
+  "ram": {
+   "default": 3,
+   "min": 2,
+   "max": 8
+  },
+  "announce": {}
  }
 }

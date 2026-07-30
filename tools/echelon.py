@@ -27,6 +27,15 @@ import shutil
 import subprocess
 import sys
 
+# Sortie en UTF-8 quoi qu'il arrive : sinon les fleches et les accents font
+# planter l'outil dès que sa sortie passe dans un tube (console Windows cp1252),
+# et `die()` lui-même échouait — l'erreur utile était remplacée par une trace.
+for _s in (sys.stdout, sys.stderr):
+    try:
+        _s.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CATALOG = os.path.join(ROOT, "catalog.json")
 
@@ -52,7 +61,7 @@ KNOWN = {
     "id", "name", "tagline", "accent", "accent_dim", "dir_name", "channel",
     "mod_file", "deps", "purge", "server", "news", "discord", "extra",
     "featured", "hidden", "logo_url", "bg_url", "card_url", "logo", "bg", "card",
-    "rpc_asset",
+    "rpc_asset", "mc_version", "java_runtime",
 }
 REQUIRED = ("id", "name", "accent", "channel")
 
@@ -478,6 +487,147 @@ def cmd_release(args):
     return rc
 
 
+def cmd_config(args):
+    """Réglages globaux du hub, appliqués SANS republier l'exe.
+
+        ./echelon config                              liste tout
+        ./echelon config mc_version 1.21.4
+        ./echelon config ram.max 12
+        ./echelon config announce.fr "Maintenance a 21h"
+        ./echelon config announce.fr null             retire l'annonce
+        ./echelon config text.fr.play "JOUER !"
+    """
+    cat = load()
+    cfg = cat.setdefault("config", {})
+    if not args:
+        print(json.dumps(cfg, ensure_ascii=False, indent=2))
+        return 0
+    if len(args) < 2:
+        die("usage: ./echelon config <champ> <valeur>   (champ pointé accepté)")
+    path, val = args[0], " ".join(args[1:])
+    got = coerce(val)
+    parts = path.split(".")
+    node = cfg
+    for p in parts[:-1]:
+        node = node.setdefault(p, {})
+        if not isinstance(node, dict):
+            die("%s n'est pas un objet, impossible d'y écrire %s" % (p, path))
+    if got is None:
+        node.pop(parts[-1], None)
+        print(OK + "config.%s supprimé" % path)
+    else:
+        node[parts[-1]] = got
+        print(OK + "config.%s = %r" % (path, got))
+    save(cat)
+    print("      → ./echelon publish  (aucun exe à reconstruire)")
+    return 0
+
+
+def cmd_client(args):
+    """Publie une nouvelle version du HUB. Les exe des joueurs se remplacent
+    tout seuls au démarrage suivant — personne ne réinstalle rien.
+
+        ./echelon client 1.6            mode blanc
+        ./echelon client 1.6 --yes      bump, push, attend le build, publie
+
+    Remplace publish-client.sh, qui utilise `sed -i ''` (BSD/macOS) et échoue
+    sur GNU sed — donc sur cette machine.
+    """
+    import hashlib
+    import json as _json
+    import tempfile
+    import time
+    if not args:
+        die("usage: ./echelon client <version> [--yes]")
+    ver = args[0]
+    go = "--yes" in args
+    if not re.fullmatch(r"\d+(\.\d+)*", ver):
+        die("version invalide : %r (attendu 1.6, 1.6.1…)" % ver)
+
+    src = os.path.join(ROOT, "client", "launcher.py")
+    with open(src, encoding="utf-8") as f:
+        code = f.read()
+    m = re.search(r'^CLIENT_VERSION = "([^"]*)"', code, re.M)
+    if not m:
+        die("CLIENT_VERSION introuvable dans client/launcher.py")
+    cur = m.group(1)
+
+    def vt(x):
+        return tuple(int(i) for i in x.split("."))
+
+    if vt(ver) <= vt(cur):
+        die("la version doit monter : %s -> %s refusé (les clients comparent\n"
+            "       client_version, ils ne se mettraient pas à jour)" % (cur, ver))
+
+    dirty = subprocess.check_output(["git", "-C", ROOT, "status", "--porcelain"],
+                                    text=True).strip()
+    print("  version du hub   %s -> %s" % (cur, ver))
+    print("  arbre git        %s" % ("PROPRE" if not dirty else
+                                     "%d fichier(s) modifie(s)" % len(dirty.splitlines())))
+    if not go:
+        print("\n" + WARN + "MODE BLANC — rien n'a été envoyé.")
+        print("      Publier = l'exe de chaque joueur se remplace au démarrage suivant.")
+        print("      Quand tu es sûr :  ./echelon client %s --yes" % ver)
+        return 0
+
+    # 1) bump portable (pas de sed)
+    with open(src, "w", encoding="utf-8", newline="") as f:
+        f.write(re.sub(r'^CLIENT_VERSION = "[^"]*"',
+                       'CLIENT_VERSION = "%s"' % ver, code, count=1, flags=re.M))
+    subprocess.check_call([sys.executable, "-m", "py_compile", src])
+    subprocess.call(["git", "-C", ROOT, "add", "client/launcher.py"])
+    subprocess.call(["git", "-C", ROOT, "commit", "-m", "hub client v%s" % ver])
+    if subprocess.call(["git", "-C", ROOT, "push"]) != 0:
+        die("push échoué")
+
+    # 2) attendre le build Windows lancé par le push
+    gh = gh_bin()
+    print("→ build Windows en cours…")
+    run_id = None
+    for _ in range(60):
+        time.sleep(10)
+        try:
+            out = subprocess.check_output(
+                [gh, "run", "list", "--limit", "1", "--json",
+                 "databaseId,status,conclusion,headSha,name"], cwd=ROOT, text=True)
+            r = _json.loads(out)[0]
+        except Exception as e:
+            print("   (%s)" % e)
+            continue
+        run_id = r["databaseId"]
+        if r["status"] == "completed":
+            if r["conclusion"] != "success":
+                die("le build a échoué (%s) — rien n'a été publié.\n"
+                    "       Le bump de version est committé et poussé ; corrige puis\n"
+                    "       relance ./echelon client %s --yes" % (r["conclusion"], ver))
+            break
+        print("   %s…" % r["status"])
+    else:
+        die("délai dépassé en attendant le build")
+
+    # 3) récupérer l'exe et le publier avec son sha256
+    tmp = tempfile.mkdtemp()
+    subprocess.check_call([gh, "run", "download", str(run_id),
+                           "--name", "StudioEchelonClient", "--dir", tmp], cwd=ROOT)
+    exe = os.path.join(tmp, "StudioEchelonClient.exe")
+    if not os.path.isfile(exe):
+        die("exe absent de l'artefact")
+    sha = hashlib.sha256(open(exe, "rb").read()).hexdigest()
+    man = {"client_version": ver,
+           "client_url": RELEASES + "/client/StudioEchelonClient.exe",
+           "client_sha256": sha,
+           "client_size": os.path.getsize(exe)}
+    with open(os.path.join(tmp, "manifest.json"), "w", encoding="utf-8") as f:
+        _json.dump(man, f, indent=2)
+    rc = subprocess.call([gh, "release", "upload", "client", exe,
+                          os.path.join(tmp, "manifest.json"), "--clobber"], cwd=ROOT)
+    if rc == 0:
+        print(OK + "hub v%s en ligne (%.1f Mo) — les joueurs se mettront à jour"
+              % (ver, os.path.getsize(exe) / 1048576.0))
+        print("      sha256 %s…" % sha[:16])
+    return rc
+
+
 def cmd_set_rpc(args):
     """champs du bloc `rpc` (l'unique application Discord, partagée)."""
     if len(args) < 2:
@@ -502,6 +652,7 @@ COMMANDS = {
     "list": cmd_list, "check": cmd_check, "set": cmd_set, "news": cmd_news,
     "add": cmd_add, "preview": cmd_preview, "publish": cmd_publish,
     "set-rpc": cmd_set_rpc, "release": cmd_release,
+    "config": cmd_config, "client": cmd_client,
 }
 
 

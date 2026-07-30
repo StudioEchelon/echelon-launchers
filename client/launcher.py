@@ -341,6 +341,8 @@ TR = {
                "es": "instalaciones y actualizaciones", "de": "Installationen und Updates",
                "pt": "instalações e atualizações", "it": "installazioni e aggiornamenti",
                "ru": "установки и обновления"},
+    "announce": {"fr": "ANNONCE", "en": "NOTICE", "es": "AVISO", "de": "HINWEIS",
+                 "pt": "AVISO", "it": "AVVISO", "ru": "ОБЪЯВЛЕНИЕ"},
     "prof_pseudo": {"fr": "Changer de pseudo", "en": "Change username",
                     "es": "Cambiar usuario", "de": "Namen ändern",
                     "pt": "Mudar nick", "it": "Cambia nome", "ru": "Сменить ник"},
@@ -476,6 +478,35 @@ DEFAULT_GAMES = [
 
 GAMES = []   # rempli au démarrage depuis le catalogue distant (ou le défaut)
 RPC = {}     # bloc `rpc` du catalogue : {"app_id": "...", ...} — une seule app
+CONF = {}    # bloc `config` : tout ce qui se règle SANS republier l'exe
+
+
+def conf(key, default=None):
+    """Réglage du catalogue, sinon la valeur par défaut embarquée.
+
+    Le but est qu'un maximum de choses se change en publiant `catalog.json` au
+    lieu de reconstruire et redistribuer un exe : version de Minecraft, runtime
+    Java, invitation Discord, bornes de RAM, textes, annonce globale.
+    """
+    cur = CONF
+    for part in key.split("."):
+        if not isinstance(cur, dict) or part not in cur:
+            return default
+        cur = cur[part]
+    return cur if cur is not None else default
+
+
+def mc_version(game=None):
+    """Version de Minecraft : par jeu, sinon globale, sinon la valeur embarquée."""
+    if game and game.get("mc_version"):
+        return str(game["mc_version"])
+    return str(conf("mc_version", MC_VERSION))
+
+
+def java_runtime(game=None):
+    if game and game.get("java_runtime"):
+        return str(game["java_runtime"])
+    return str(conf("java_runtime", JAVA_RUNTIME))
 
 
 def _cache_dir():
@@ -619,7 +650,7 @@ def load_games():
     cache réel, pour ne jamais polluer l'install d'un joueur.
     """
     import urllib.request
-    global RPC
+    global RPC, CONF
     raw = None
     doc = None
     override = os.environ.get("ECHELON_CATALOG")
@@ -648,6 +679,9 @@ def load_games():
                 raw = None
     if isinstance(doc, dict) and isinstance(doc.get("rpc"), dict):
         RPC = doc["rpc"]     # une app pour tous les projets
+    if isinstance(doc, dict) and isinstance(doc.get("config"), dict):
+        CONF = doc["config"]
+        logging.info("config distante : %s", sorted(CONF.keys()))
     if not raw:
         return list(DEFAULT_GAMES)
     out = []
@@ -818,13 +852,13 @@ class Hub(tk.Tk):
             time.sleep(45)
 
     # ── membres Discord (endpoint invite, pas besoin du widget) ────────
-    DISCORD_INVITE = "playharbor"
+    DISCORD_INVITE = "playharbor"   # defaut ; conf("discord_invite") prime
 
     def _fetch_discord(self):
         """(total, en_ligne) via l'API invite Discord, ou None."""
         import urllib.request
         url = ("https://discord.com/api/v9/invites/"
-               + self.DISCORD_INVITE + "?with_counts=true")
+               + conf("discord_invite", self.DISCORD_INVITE) + "?with_counts=true")
         req = urllib.request.Request(url, headers={"User-Agent": "echelon-client"})
         with urllib.request.urlopen(req, timeout=6) as r:
             d = json.load(r)
@@ -1048,8 +1082,14 @@ del "%~f0"
         return (self.FONT, size, "bold") if bold else (self.FONT, size)
 
     def T(self, key, **kw):
-        s = TR.get(key, {}).get(self.lang) or TR.get(key, {}).get("fr", key)
-        return s.format(**kw) if kw else s
+        # `config.text.<langue>.<cle>` permet de corriger n'importe quel libellé
+        # depuis le catalogue, sans reconstruire l'exe.
+        s = (conf("text.%s.%s" % (self.lang, key))
+             or TR.get(key, {}).get(self.lang) or TR.get(key, {}).get("fr", key))
+        try:
+            return s.format(**kw) if kw else s
+        except Exception:
+            return s   # un texte distant mal formaté ne doit rien casser
 
     # ── images ────────────────────────────────────────────────────────
     @staticmethod
@@ -1399,6 +1439,26 @@ del "%~f0"
         self._nav_row(c, "downloads", "nav_dl", "⬇", H - 104, accent,
                       badge=self._update_count())
         self._nav_row(c, "log", "nav_log", "≡", H - 60, accent)
+
+        # ── annonce globale, réglable depuis le catalogue ────────────────
+        # Dans le rail : visible sur TOUTES les pages et ne peut chevaucher
+        # aucun titre. Permet d'annoncer une maintenance sans republier l'exe.
+        msg = conf("announce.%s" % self.lang) or conf("announce.fr")
+        if msg:
+            aw = SIDEBAR - 28
+            f8 = tkfont.Font(family=self.FONT, size=8)
+            lines = max(1, int(f8.measure(str(msg)) / float(aw - 28)) + 1)
+            ah = 34 + 13 * lines
+            ay = 100 + 44 * len(PAGES) + 22
+            c.create_image(14 + aw // 2, ay + ah // 2,
+                           image=self._flat("annonce%d" % ah, aw, ah,
+                                            (24, 20, 14, 240), radius=12))
+            c.create_text(28, ay + 15, anchor="w", text="!",
+                          fill="#F0C36A", font=self.F(10, True))
+            c.create_text(40, ay + 15, anchor="w", text=self.T("announce"),
+                          fill="#F0C36A", font=self.F(8, True))
+            c.create_text(28, ay + 32, anchor="nw", text=str(msg),
+                          fill="#D8CBB0", font=self.F(8), width=aw - 28)
 
         # un seul liseré, qui glisse d'une section à l'autre (animé par _tick)
         if self._nav_ind_y is None:
@@ -2012,7 +2072,8 @@ del "%~f0"
 
     # ── options par jeu ───────────────────────────────────────────────
     def _opts(self, g):
-        return self._state().get("opt_" + g["id"], {"ram": 3, "close": False})
+        return self._state().get("opt_" + g["id"],
+                                {"ram": int(conf("ram.default", 3)), "close": False})
 
     def _set_opt(self, g, **kv):
         o = self._opts(g)
@@ -2653,7 +2714,7 @@ del "%~f0"
                                                          "https://playechelon.net"))
             elif hit == "site":
                 self.prof_open = False
-                webbrowser.open("https://studioechelon.fr")
+                webbrowser.open(conf("site_url", "https://studioechelon.fr"))
             elif not self._hit(self._chip_zone, e.x, e.y):
                 self.prof_open = False   # clic ailleurs : on referme
             self._draw()
@@ -2674,9 +2735,11 @@ del "%~f0"
             return
         if self.options_open:   # modal : tout passe par le panneau
             if self._hit(self._ram_minus, e.x, e.y):
-                self._set_opt(g, ram=max(2, self._opts(g).get("ram", 3) - 1))
+                self._set_opt(g, ram=max(int(conf("ram.min", 2)),
+                                         self._opts(g).get("ram", 3) - 1))
             elif self._hit(self._ram_plus, e.x, e.y):
-                self._set_opt(g, ram=min(8, self._opts(g).get("ram", 3) + 1))
+                self._set_opt(g, ram=min(int(conf("ram.max", 8)),
+                                         self._opts(g).get("ram", 3) + 1))
             elif self._hit(self._rpc_zone, e.x, e.y):
                 self._set_opt(g, rpc=not self._opts(g).get("rpc", True))
             elif self._hit(self._close_zone, e.x, e.y):
@@ -2738,7 +2801,7 @@ del "%~f0"
             self._draw()
         elif hasattr(self, "_site_zone") and self.hover == "studio_site" \
                 and self._hit(self._site_zone, e.x, e.y):
-            webbrowser.open("https://studioechelon.fr")
+            webbrowser.open(conf("site_url", "https://studioechelon.fr"))
 
     def _zone_hover(self, e):
         """zones listées : filtres, sections du rail, cartes de jeu."""
@@ -2867,12 +2930,13 @@ del "%~f0"
             os.makedirs(g["dir"], exist_ok=True)
             logging.info("JOUER %s (pseudo=%s)", g["id"], pseudo)
 
-            self.status.set(self.T("installing_mc", v=MC_VERSION))
-            mll.fabric.install_fabric(MC_VERSION, g["dir"], callback=self._callbacks())
+            mcv = mc_version(g)
+            self.status.set(self.T("installing_mc", v=mcv))
+            mll.fabric.install_fabric(mcv, g["dir"], callback=self._callbacks())
             self._check_cancel()
             fabric_version = None
             for v in mll.utils.get_installed_versions(g["dir"]):
-                if "fabric" in v["id"] and MC_VERSION in v["id"]:
+                if "fabric" in v["id"] and mcv in v["id"]:
                     fabric_version = v["id"]
             if not fabric_version:
                 raise RuntimeError("Fabric introuvable après installation")
@@ -2881,11 +2945,12 @@ del "%~f0"
             java = None
             try:
                 jroot = game_root("StudioEchelon")
-                java = mll.runtime.get_executable_path(JAVA_RUNTIME, jroot)
+                jrt = java_runtime(g)
+                java = mll.runtime.get_executable_path(jrt, jroot)
                 if java is None:
                     self.status.set(self.T("installing_java"))
-                    mll.runtime.install_jvm_runtime(JAVA_RUNTIME, jroot, callback=self._callbacks())
-                    java = mll.runtime.get_executable_path(JAVA_RUNTIME, jroot)
+                    mll.runtime.install_jvm_runtime(jrt, jroot, callback=self._callbacks())
+                    java = mll.runtime.get_executable_path(jrt, jroot)
             except Exception:
                 java = None
             self._java_path = java or "system PATH"
@@ -3012,7 +3077,7 @@ del "%~f0"
             if any(f.startswith(prefix) for f in os.listdir(mods)):
                 continue
             api = ("https://api.modrinth.com/v2/project/" + project
-                   + "/version?game_versions=[%22" + MC_VERSION + "%22]&loaders=[%22fabric%22]")
+                   + "/version?game_versions=[%22" + mc_version(g) + "%22]&loaders=[%22fabric%22]")
             req = urllib.request.Request(api, headers={"User-Agent": "echelon-client"})
             versions = json.load(urllib.request.urlopen(req))
             f0 = versions[0]["files"][0]
