@@ -1062,18 +1062,44 @@ class Hub(tk.Tk):
                 # fichier soit libere : plus de course. Si le remplacement est
                 # vraiment impossible, on relance quand meme l'ancien exe pour
                 # ne jamais laisser le joueur sans rien.
+                # Ce script etait MUET : quand la relance echouait (constate en
+                # 1.6 puis 1.7), il ne restait aucune trace et on ne pouvait que
+                # speculer. Il journalise maintenant chaque etape dans
+                # StudioEchelon/update.log, et il REESSAIE la relance en
+                # verifiant que le process apparait vraiment.
+                ulog = os.path.join(game_root("StudioEchelon"), "update.log")
+                name = os.path.basename(exe)
                 with open(bat, "w") as f:
                     f.write(f'''@echo off
-setlocal
+set LOG={ulog}
+echo [%date% %time%] mise a jour demarree >>"%LOG%"
 set n=0
 :retry
 ping -n 2 127.0.0.1 >nul
 move /y "{new}" "{exe}" >nul 2>&1
-if not exist "{new}" goto done
+if not exist "{new}" goto moved
 set /a n+=1
+echo [%date% %time%] fichier encore verrouille (essai %n%) >>"%LOG%"
 if %n% lss 30 goto retry
-:done
+echo [%date% %time%] ECHEC remplacement, relance de l ancien >>"%LOG%"
+goto launch
+:moved
+echo [%date% %time%] exe remplace apres %n% essai(s) >>"%LOG%"
+:launch
+set m=0
+:again
+set /a m+=1
 start "" "{exe}"
+ping -n 4 127.0.0.1 >nul
+tasklist /FI "IMAGENAME eq {name}" | find /I "{name}" >nul
+if not errorlevel 1 goto ok
+echo [%date% %time%] relance ratee (essai %m%) >>"%LOG%"
+if %m% lss 5 goto again
+echo [%date% %time%] ECHEC de la relance >>"%LOG%"
+goto fin
+:ok
+echo [%date% %time%] relance OK (essai %m%) >>"%LOG%"
+:fin
 del "%~f0"
 ''')
                 subprocess.Popen(["cmd", "/c", bat], creationflags=0x08000000)
