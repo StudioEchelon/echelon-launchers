@@ -39,17 +39,19 @@
      "channel": "echelonskin",
      "file": "echelonskin.jar"
     }
-   ]
+   ],
+   "featured": true,
+   "rpc_asset": "harbor"
   },
   {
    "id": "donshot",
-   "name": "DON SHOT",
+   "name": "GLAIVOLVER",
    "tagline": {
     "fr": "Hero shooter — 35 héros, duels, ligues.",
     "en": "Hero shooter — 35 heroes, duels, leagues."
    },
-   "accent": "#54E63C",
-   "accent_dim": "#2FA84C",
+   "accent": "#A855F7",
+   "accent_dim": "#6030A8",
    "dir_name": "DonShot",
    "channel": "donshot",
    "mod_file": "donshot.jar",
@@ -83,7 +85,17 @@
      "channel": "echelonskin",
      "file": "echelonskin.jar"
     }
-   ]
+   ],
+   "featured": true,
+   "logo": "assets/glaivolver_logo.png",
+   "bg": "assets/glaivolver_bg.png",
+   "rpc_asset": "donshot"
   }
- ]
+ ],
+ "rpc": {
+  "app_id": 123456789012345678,
+  "small_asset": "echelon",
+  "button_label": "Studio Echelon",
+  "button_url": "https://playechelon.net"
+ }
 }
