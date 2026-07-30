@@ -1053,10 +1053,26 @@ class Hub(tk.Tk):
             if platform.system() == "Windows":
                 bat = os.path.join(game_root("StudioEchelon"), "update.bat")
                 os.makedirs(os.path.dirname(bat), exist_ok=True)
+                # `timeout` ECHOUE sans console (et ce .bat tourne en
+                # CREATE_NO_WINDOW) : le delai de 2 s ne s'appliquait pas, donc
+                # `move` courait contre l'exe encore ouvert, qui tient son
+                # fichier. Resultat non deterministe — constate en vrai : exe
+                # remplace mais application jamais relancee.
+                # `ping` marche sans console, et on reessaie jusqu'a ce que le
+                # fichier soit libere : plus de course. Si le remplacement est
+                # vraiment impossible, on relance quand meme l'ancien exe pour
+                # ne jamais laisser le joueur sans rien.
                 with open(bat, "w") as f:
                     f.write(f'''@echo off
-timeout /t 2 /nobreak >nul
-move /y "{new}" "{exe}" >nul
+setlocal
+set n=0
+:retry
+ping -n 2 127.0.0.1 >nul
+move /y "{new}" "{exe}" >nul 2>&1
+if not exist "{new}" goto done
+set /a n+=1
+if %n% lss 30 goto retry
+:done
 start "" "{exe}"
 del "%~f0"
 ''')
