@@ -12,11 +12,6 @@
    "dir_name": "Harbor",
    "channel": "harbor",
    "mod_file": "harbor.jar",
-   "deps": {
-    "fabric-api": "fabric-api",
-    "sodium": "sodium",
-    "lithium": "lithium"
-   },
    "purge": [],
    "server": "142.4.219.127:25600",
    "news": {
@@ -41,7 +36,13 @@
     }
    ],
    "featured": true,
-   "rpc_asset": "harbor"
+   "rpc_asset": "harbor",
+   "deps": {
+    "fabric-api": "fabric-api",
+    "sodium": "sodium",
+    "lithium": "lithium",
+    "replaymod": "replaymod"
+   }
   },
   {
    "id": "donshot",
