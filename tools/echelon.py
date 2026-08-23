@@ -65,6 +65,77 @@ KNOWN = {
 }
 REQUIRED = ("id", "name", "accent", "channel")
 
+# Identite visuelle. `mini` = en dessous on refuse (le hub agrandirait une
+# bouillie), `vise` = la taille conseillee. Le hub recadre toujours en "cover",
+# donc plus grand ne coute qu'un peu de telechargement.
+ROLES = {
+    "logo":  {"champ": "logo_url", "mini": (260, 84),  "vise": (620, 200),
+              "quoi": "mot-symbole du projet, PNG transparent",
+              "affiche": "130x42 et 112x52 dans le hub"},
+    "bg":    {"champ": "bg_url",   "mini": (960, 570), "vise": (1920, 1140),
+              "quoi": "key-art plein ecran de la page d'accueil",
+              "affiche": "recadre en 1280x760, assombri a gauche"},
+    "card":  {"champ": "card_url", "mini": (300, 400), "vise": (600, 800),
+              "quoi": "visuel portrait 3:4 de la Bibliotheque",
+              "affiche": "150x200 ; a defaut le key-art est recadre"},
+}
+ART_MAX = 8 * 1024 * 1024
+
+
+def image_info(chemin):
+    """Type et dimensions en lisant les en-tetes — pas de Pillow ici, l'outil
+    doit tourner sur un python nu."""
+    import struct
+    d = open(chemin, "rb").read()
+    if d[:8] == b"\x89PNG\r\n\x1a\n" and d[12:16] == b"IHDR":
+        w, h = struct.unpack(">II", d[16:24])
+        return {"type": "png", "w": w, "h": h, "alpha": d[25] in (4, 6),
+                "ext": "png", "octets": len(d)}
+    if d[:2] == b"\xff\xd8":
+        i = 2
+        while i + 9 < len(d):
+            if d[i] != 0xFF:
+                i += 1
+                continue
+            m = d[i + 1]
+            if m in (0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7,
+                     0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF):
+                h, w = struct.unpack(">HH", d[i + 5:i + 9])
+                return {"type": "jpeg", "w": w, "h": h, "alpha": False,
+                        "ext": "jpg", "octets": len(d)}
+            if m == 0xD8 or m == 0x01 or 0xD0 <= m <= 0xD7:
+                i += 2
+                continue
+            if i + 4 > len(d):
+                break
+            i += 2 + struct.unpack(">H", d[i + 2:i + 4])[0]
+    return None
+
+
+def art_verdict(chemin, role):
+    """(info, erreurs, alertes) — meme jugement pour le terminal et le panneau."""
+    spec = ROLES[role]
+    info = image_info(chemin)
+    if not info:
+        return None, ["format non reconnu : il faut un PNG ou un JPEG"], []
+    err, att = [], []
+    if info["octets"] > ART_MAX:
+        err.append("%.1f Mo : au-dela de %d Mo, chaque joueur le telecharge"
+                   % (info["octets"] / 1048576.0, ART_MAX // 1048576))
+    if info["w"] < spec["mini"][0] or info["h"] < spec["mini"][1]:
+        err.append("%dx%d : trop petit, minimum %dx%d pour ce role"
+                   % (info["w"], info["h"], spec["mini"][0], spec["mini"][1]))
+    elif info["w"] < spec["vise"][0] or info["h"] < spec["vise"][1]:
+        att.append("%dx%d : ca passe, mais %dx%d rendrait mieux"
+                   % (info["w"], info["h"], spec["vise"][0], spec["vise"][1]))
+    if role == "logo" and not info["alpha"]:
+        att.append("pas de transparence : le logo s'affichera dans un rectangle opaque")
+    if role == "card":
+        r = info["w"] / float(info["h"])
+        if not (0.6 <= r <= 0.9):
+            att.append("rapport %.2f : la carte est en 3:4 (0.75), le hub recadrera fort" % r)
+    return info, err, att
+
 OK, WARN, BAD = "  ok  ", " att. ", " ERR  "
 
 
@@ -93,8 +164,39 @@ def die(msg):
 
 
 # ── check ────────────────────────────────────────────────────────────────
+def canaux_manquants(cat):
+    """Projets visibles dont le mod n'a jamais ete publie sur son canal.
+
+    Sans ca le joueur installe Minecraft, Fabric et Java — dix minutes — puis
+    se prend une erreur au dernier moment. Le catalogue ne doit pas exposer un
+    projet injouable.
+    """
+    import urllib.request
+    trous = []
+    for g in cat.get("games", []):
+        if g.get("hidden") or not g.get("channel"):
+            continue
+        url = RELEASES + "/" + g["channel"] + "/manifest.json"
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "echelon-cli"})
+            urllib.request.urlopen(req, timeout=10).read(1)
+        except Exception as e:
+            if getattr(e, "code", None) == 404:
+                trous.append((g.get("id"), g["channel"]))
+            else:
+                print(WARN + "canal %s injoignable (%s) — verification ignoree"
+                      % (g["channel"], e))
+    return trous
+
+
 def cmd_check(args):
-    """Valide le catalogue. Sortie non nulle = ne publie pas."""
+    """Valide le catalogue. Sortie non nulle = ne publie pas.
+
+    `--canaux` ajoute une sonde reseau : chaque projet visible doit avoir un mod
+    publie sur son canal. C'est la CI qui en a besoin — elle ne lance que check,
+    jamais publish, donc sans ce drapeau le garde-fou serait contourne par un
+    simple `git push` de catalog.json.
+    """
     cat = load()
     games = cat.get("games")
     if not isinstance(games, list) or not games:
@@ -166,10 +268,42 @@ def cmd_check(args):
             if not isinstance(ex, dict) or not ex.get("channel") or not ex.get("file"):
                 errors.append("%s : extra exige {channel, file}" % tag)
 
+        # purge efface tout fichier du dossier mods commencant par le prefixe,
+        # et il tourne APRES le telechargement. Un prefixe qui couvre le jar du
+        # jeu ou un extra supprimerait le mod a chaque lancement.
+        propres = [str(g.get("mod_file") or "")] + [str(e.get("file") or "")
+                                                    for e in g.get("extra", [])
+                                                    if isinstance(e, dict)]
+        pl = g.get("purge", [])
+        for pfx in pl if isinstance(pl, list) else []:
+            if not isinstance(pfx, str) or not pfx:
+                continue
+            vise = [f for f in propres if f and f.startswith(pfx)]
+            if vise:
+                errors.append("%s : purge %r efface %s, que le hub vient d'installer"
+                              % (tag, pfx, ", ".join(vise)))
+
         for k in ("logo_url", "bg_url", "card_url"):
             u = g.get(k)
             if u and not str(u).startswith(("http://", "https://")):
                 errors.append("%s : %s doit être une URL http(s)" % (tag, k))
+
+        # Sans logo_url/bg_url, le hub retombe sur assets/<id>_<role>.png,
+        # embarque dans l'exe. Absent, Image.open leve et le dessin du hub
+        # s'arrete : ecran fige pour TOUS les joueurs, pas juste ce projet.
+        if not g.get("hidden"):
+            for role, champ in (("logo", "logo_url"), ("bg", "bg_url")):
+                if g.get(champ) or g.get(role):
+                    continue
+                embarque = os.path.join(ROOT, "client", "assets",
+                                        "%s_%s.png" % (gid, role))
+                if os.path.isfile(embarque):
+                    warns.append("%s : %s repose sur l'image embarquee — l'exe "
+                                 "publie doit vraiment la contenir" % (tag, role))
+                else:
+                    errors.append("%s : projet visible sans %s — le hub planterait "
+                                  "au dessin (./echelon art %s %s <fichier>)"
+                                  % (tag, champ, gid, role))
 
         if g.get("featured") and not g.get("hidden"):
             featured.append(gid)
@@ -206,6 +340,12 @@ def cmd_check(args):
             warns.append("clés rpc_asset partagées par plusieurs projets : %s"
                          % ", ".join(dbl))
 
+    if "--canaux" in args:
+        for gid, canal in canaux_manquants(cat):
+            errors.append("%s : visible mais aucun mod publié sur le canal %s — "
+                          "le joueur installerait tout puis échouerait à la fin"
+                          % (gid, canal))
+
     for w in warns:
         print(WARN + w)
     for e in errors:
@@ -235,6 +375,15 @@ def cmd_list(args):
 
 # ── set ──────────────────────────────────────────────────────────────────
 def coerce(v):
+    # JSON explicite : seul moyen d'ecrire une liste ou un objet (purge, extra).
+    # Le README documentait deja `set harbor extra '[{...}]'` alors que la valeur
+    # etait ecrite comme une chaine — le hub l'ignorait en silence.
+    t = v.strip()
+    if t[:1] in ("[", "{"):
+        try:
+            return json.loads(t)
+        except Exception:
+            die("valeur JSON invalide : %s" % t[:60])
     if v.lower() in ("true", "oui", "yes"):
         return True
     if v.lower() in ("false", "non", "no"):
@@ -320,6 +469,43 @@ def ask(label, default=""):
 
 def cmd_add(args):
     cat = load()
+    # Forme NON INTERACTIVE : ./echelon add '{"id":"dac","name":"Divide & Conquer",...}'
+    # C'est celle qu'utilise le panneau web ; l'assistant reste dispo sans argument.
+    if args and args[0].strip()[:1] == "{":
+        try:
+            entree = json.loads(" ".join(args))
+        except Exception as e:
+            die("JSON invalide : %s" % e)
+        gid = str(entree.get("id", "")).strip()
+        if not re.fullmatch(r"[a-z0-9][a-z0-9-]*", gid):
+            die("id invalide : %r (minuscules, chiffres, tirets)" % gid)
+        if any(g["id"] == gid for g in cat["games"]):
+            die("ce projet existe deja : %s" % gid)
+        nom = str(entree.get("name") or gid.upper())
+        g = {
+            "id": gid,
+            "name": nom,
+            "tagline": entree.get("tagline") or {"fr": "", "en": ""},
+            "accent": entree.get("accent") or "#5AE68C",
+            "dir_name": entree.get("dir_name") or nom.replace(" ", "").replace("&", "And"),
+            "channel": entree.get("channel") or gid,
+            "mod_file": entree.get("mod_file") or (gid + ".jar"),
+            "deps": entree.get("deps") or {"fabric-api": "fabric-api"},
+            "purge": entree.get("purge") or [],
+            "news": entree.get("news") or {"fr": [], "en": []},
+            "discord": entree.get("discord") or "https://playechelon.net",
+            # jamais visible d'emblee : les visuels et le canal doivent exister
+            "hidden": True,
+        }
+        for k in ("server", "logo_url", "bg_url", "card_url", "rpc_asset",
+                  "mc_version", "java_runtime", "accent_dim", "extra"):
+            if entree.get(k):
+                g[k] = entree[k]
+        cat["games"].append(g)
+        save(cat)
+        print(OK + "%s cree (masque). Visuels + canal de mod, puis hidden=false." % gid)
+        return 0
+
     print("Nouveau projet — Entrée accepte la valeur entre crochets.\n")
     gid = ask("id (minuscules, ex. glaivolver)")
     if not gid:
@@ -391,11 +577,25 @@ def cmd_preview(args):
 
 # ── publish ──────────────────────────────────────────────────────────────
 def cmd_publish(args):
-    if cmd_check([]) != 0:
+    # --canaux : publier un projet visible dont le mod n'est pas en ligne
+    # envoie chaque joueur dans dix minutes d'installation pour rien.
+    if cmd_check(["--canaux"]) != 0:
         die("catalogue invalide : publication annulée")
-    script = os.path.join(ROOT, "publish-catalog.sh")
-    print("→ %s" % script)
-    return subprocess.call(["sh", script])
+    # gh en direct : publish-catalog.sh dependait de `sh` ET de `python3`, deux
+    # choses absentes d'un Windows normal. Sous PowerShell `sh` n'existe pas ;
+    # sous Git Bash `python3` tombe sur le raccourci Microsoft Store et le
+    # script sortait sur "catalog.json invalide", un message faux.
+    gh = gh_bin()
+    if subprocess.call([gh, "release", "view", "client"],
+                       stdout=subprocess.PIPE, stderr=subprocess.PIPE) != 0:
+        subprocess.check_call([gh, "release", "create", "client",
+                               "--title", "Studio Echelon Client",
+                               "--notes", "Hub des jeux Echelon."])
+    rc = subprocess.call([gh, "release", "upload", "client", CATALOG, "--clobber"])
+    if rc == 0:
+        print(OK + "catalogue publié — les hubs se mettront à jour au prochain "
+                   "démarrage (et sous 2 min pour ceux déjà ouverts)")
+    return rc
 
 
 def cmd_release(args):
@@ -427,6 +627,10 @@ def cmd_release(args):
         names = z.namelist()
     if "fabric.mod.json" not in names:
         die("pas de fabric.mod.json dans le jar — ce n'est pas un mod Fabric")
+    if not any(n.endswith(".class") for n in names):
+        # le jar -sources contient bien fabric.mod.json mais aucune classe :
+        # publie, il livrerait a tous les joueurs un mod qui ne fait rien.
+        die("aucune classe compilée : c'est le jar de *sources*, prends celui sans le suffixe -sources")
     if not re.fullmatch(r"[\w.+-]+", ver):
         die("version invalide : %r" % ver)
 
@@ -485,6 +689,91 @@ def cmd_release(args):
     if rc == 0:
         print(OK + "%s %s publié — les joueurs l'auront au prochain lancement" % (channel, ver))
     return rc
+
+
+def cmd_art(args):
+    """Identite visuelle d'un projet : logo, key-art, carte.
+
+        ./echelon art harbor                       etat des trois images
+        ./echelon art harbor logo ./logo.png       mode blanc
+        ./echelon art harbor logo ./logo.png --yes envoie et ecrit l'URL
+        ./echelon art harbor card --none           retire l'image
+
+    L'image part en asset de la release `client`, a cote de catalog.json, et son
+    nom porte 8 caracteres de son sha256. Le hub met les images en cache d'apres
+    l'URL : sans ce hachage, remplacer une image ne changerait rien chez ceux
+    qui l'ont deja telechargee.
+    """
+    import hashlib
+    import tempfile
+    cat = load()
+    if not args:
+        die("usage: ./echelon art <jeu> [<role> <fichier>|--none] [--yes]")
+    gid = args[0]
+    g = next((x for x in cat.get("games", []) if x.get("id") == gid), None)
+    if g is None:
+        die("projet inconnu : %s" % gid)
+    if len(args) == 1:
+        for role, spec in ROLES.items():
+            u = g.get(spec["champ"])
+            print("  %-5s %s" % (role, u or "— aucune (%s)" % spec["quoi"]))
+            print("        %s" % spec["affiche"])
+        return 0
+
+    role = args[1]
+    if role not in ROLES:
+        die("role inconnu : %s (attendu : %s)" % (role, ", ".join(ROLES)))
+    champ = ROLES[role]["champ"]
+
+    if "--none" in args:
+        if champ not in g:
+            print(WARN + "%s n'avait pas de %s" % (gid, role))
+            return 0
+        del g[champ]
+        save(cat)
+        print(OK + "%s : %s retire" % (gid, role))
+        print("      → ./echelon publish  pour l'envoyer aux joueurs")
+        return 0
+
+    if len(args) < 3:
+        die("usage: ./echelon art <jeu> <role> <fichier> [--yes]")
+    src, go = args[2], "--yes" in args
+    if not os.path.isfile(src):
+        die("fichier introuvable : %s" % src)
+    info, err, att = art_verdict(src, role)
+    for a in att:
+        print(WARN + a)
+    if err:
+        die("; ".join(err))
+
+    sha = hashlib.sha256(open(src, "rb").read()).hexdigest()
+    nom = "%s_%s_%s.%s" % (gid, role, sha[:8], info["ext"])
+    url = RELEASES + "/client/" + nom
+    print("  projet     %s" % gid)
+    print("  role       %s — %s" % (role, ROLES[role]["quoi"]))
+    print("  image      %dx%d %s, %.0f Ko" % (info["w"], info["h"], info["type"],
+                                              info["octets"] / 1024.0))
+    print("  actuel     %s" % (g.get(champ) or "aucun"))
+    print("  URL        %s" % url)
+    if g.get(champ) == url:
+        print(WARN + "cette image exacte est deja en place — rien a faire")
+        return 0
+    if not go:
+        print("\n" + WARN + "MODE BLANC — rien n'a ete envoye.")
+        print("      Quand tu es sur :  ./echelon art %s %s %s --yes" % (gid, role, src))
+        return 0
+
+    tmp = tempfile.mkdtemp()
+    dst = os.path.join(tmp, nom)
+    shutil.copyfile(src, dst)
+    rc = subprocess.call([gh_bin(), "release", "upload", "client", dst, "--clobber"])
+    if rc != 0:
+        die("envoi de l'image echoue (code %d)" % rc)
+    g[champ] = url
+    save(cat)
+    print(OK + "%s : %s en place" % (gid, role))
+    print("      → ./echelon publish  pour que les joueurs le voient")
+    return 0
 
 
 def cmd_config(args):
@@ -636,9 +925,16 @@ def cmd_client(args):
     rc = subprocess.call([gh, "release", "upload", "client", exe,
                           os.path.join(tmp, "manifest.json"), "--clobber"], cwd=ROOT)
     if rc == 0:
+        # Le site lit la version DANS LE NOM de la release : manifest.json est
+        # un asset, et les assets de release ne renvoient aucun en-tete CORS,
+        # donc un navigateur ne peut pas les lire. L'API GitHub, si.
+        subprocess.call([gh, "release", "edit", "client",
+                         "--title", "Studio Echelon Client %s" % ver],
+                        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         print(OK + "hub v%s en ligne (%.1f Mo) — les joueurs se mettront à jour"
               % (ver, os.path.getsize(exe) / 1048576.0))
         print("      sha256 %s…" % sha[:16])
+        print("      studioechelon.fr/launcher affichera %s tout seul" % ver)
     return rc
 
 
@@ -662,11 +958,21 @@ def cmd_set_rpc(args):
     return 0
 
 
+
+def cmd_web(args):
+    """Ouvre le panneau de gestion dans le navigateur (local, sans secret)."""
+    import runpy
+    sys.argv = ["panel"] + list(args)
+    runpy.run_path(os.path.join(ROOT, "tools", "panel.py"), run_name="__main__")
+    return 0
+
+
 COMMANDS = {
     "list": cmd_list, "check": cmd_check, "set": cmd_set, "news": cmd_news,
     "add": cmd_add, "preview": cmd_preview, "publish": cmd_publish,
     "set-rpc": cmd_set_rpc, "release": cmd_release,
-    "config": cmd_config, "client": cmd_client,
+    "config": cmd_config, "client": cmd_client, "web": cmd_web,
+    "art": cmd_art,
 }
 
 

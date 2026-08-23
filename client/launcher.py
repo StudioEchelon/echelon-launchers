@@ -6,6 +6,7 @@ Java + le mod (bootstrap GitHub) et lance le jeu. Pas de launcher tiers.
 Police Zalando Sans Expanded embarquée.
 """
 import os, sys, math, random, json, shutil, platform, subprocess, threading, uuid, webbrowser
+import re
 import collections
 
 # ── lancement du jeu ────────────────────────────────────────────────────
@@ -223,6 +224,53 @@ TR = {
                 "pt": "Offline", "it": "Offline", "ru": "Не в сети"},
     "players": {"fr": "en ligne", "en": "online", "es": "en línea", "de": "online",
                 "pt": "online", "it": "online", "ru": "в сети"},
+    "splash_maj": {"fr": "Recherche d'une mise à jour…", "en": "Checking for updates…",
+                   "es": "Buscando actualizaciones…", "de": "Suche nach Updates…",
+                   "pt": "A procurar atualizações…", "it": "Ricerca aggiornamenti…",
+                   "ru": "Проверка обновлений…"},
+    "splash_cat": {"fr": "Chargement des projets…", "en": "Loading projects…",
+                   "es": "Cargando proyectos…", "de": "Projekte werden geladen…",
+                   "pt": "A carregar projetos…", "it": "Caricamento progetti…",
+                   "ru": "Загрузка проектов…"},
+    "preparing": {"fr": "Préparation déjà en cours…", "en": "Already preparing…",
+                  "es": "Preparación en curso…", "de": "Vorbereitung läuft…",
+                  "pt": "Preparação em curso…", "it": "Preparazione in corso…",
+                  "ru": "Идёт подготовка…"},
+    "pre_java": {"fr": "Préparation en arrière-plan · Java",
+                 "en": "Preparing in background · Java",
+                 "es": "Preparando en segundo plano · Java",
+                 "de": "Vorbereitung im Hintergrund · Java",
+                 "pt": "A preparar em segundo plano · Java",
+                 "it": "Preparazione in background · Java",
+                 "ru": "Фоновая подготовка · Java"},
+    "pre_game": {"fr": "Préparation en arrière-plan · {n}",
+                 "en": "Preparing in background · {n}",
+                 "es": "Preparando en segundo plano · {n}",
+                 "de": "Vorbereitung im Hintergrund · {n}",
+                 "pt": "A preparar em segundo plano · {n}",
+                 "it": "Preparazione in background · {n}",
+                 "ru": "Фоновая подготовка · {n}"},
+    "pre_ready": {"fr": "{n} est prêt à jouer", "en": "{n} is ready to play",
+                  "es": "{n} está listo", "de": "{n} ist spielbereit",
+                  "pt": "{n} está pronto", "it": "{n} è pronto",
+                  "ru": "{n} готов к запуску"},
+    "no_server": {"fr": "Solo", "en": "Single player", "es": "Un jugador",
+                  "de": "Einzelspieler", "pt": "Um jogador", "it": "Giocatore singolo",
+                  "ru": "Одиночная игра"},
+    "need_pseudo": {"fr": "Choisis un pseudo avant de jouer (3 à 16 caractères, "
+                          "lettres, chiffres ou _).",
+                    "en": "Pick a username before playing (3–16 characters, "
+                          "letters, digits or _).",
+                    "es": "Elige un nombre antes de jugar (3–16 caracteres, "
+                          "letras, números o _).",
+                    "de": "Wähle einen Namen, bevor du spielst (3–16 Zeichen, "
+                          "Buchstaben, Ziffern oder _).",
+                    "pt": "Escolhe um nome antes de jogar (3–16 caracteres, "
+                          "letras, números ou _).",
+                    "it": "Scegli un nome prima di giocare (3–16 caratteri, "
+                          "lettere, cifre o _).",
+                    "ru": "Выберите ник перед игрой (3–16 символов: буквы, "
+                          "цифры или _)."},
     "members": {"fr": "membres", "en": "members", "es": "miembros", "de": "Mitglieder",
                 "pt": "membros", "it": "membri", "ru": "участников"},
     "news": {"fr": "NOUVEAUTÉS", "en": "NEWS", "es": "NOVEDADES", "de": "NEUIGKEITEN",
@@ -477,6 +525,13 @@ DEFAULT_GAMES = [
 ]
 
 GAMES = []   # rempli au démarrage depuis le catalogue distant (ou le défaut)
+
+# Couleur du STUDIO, pas d'un projet. Tirée de la bannière du launcher, dont
+# elle est la teinte dominante. La coque la porte toujours ; sans elle, Studio
+# Echelon n'avait aucune couleur à lui — il était vert chez Harbor et rose chez
+# Divide & Conquer.
+ECHELON = "#27CCD3"
+ECHELON_NUIT = "#050F18"
 RPC = {}     # bloc `rpc` du catalogue : {"app_id": "...", ...} — une seule app
 CONF = {}    # bloc `config` : tout ce qui se règle SANS republier l'exe
 
@@ -698,14 +753,14 @@ def load_games():
 class Hub(tk.Tk):
     def __init__(self):
         super().__init__()
-        # auto-update du hub AVANT toute UI : si un nouvel exe est publié,
-        # on le télécharge, on se remplace et on redémarre.
-        if self._self_update():
-            self.destroy()
-            return
-        global GAMES
-        GAMES = load_games()   # catalogue distant → cache → défaut
+        # La FENETRE D'ABORD. Avant, la mise à jour du hub et le téléchargement
+        # du catalogue tournaient sur le fil Tk sans qu'aucune fenêtre existe :
+        # le joueur lançait l'exe et il ne se passait visiblement rien pendant
+        # plusieurs secondes — le temps d'un aller-retour réseau, parfois deux.
         self.title("Studio Echelon")
+        self.geometry(f"{W}x{H}")
+        self.resizable(False, False)
+        self.configure(bg=ECHELON_NUIT)
         self._install_font()
         try:
             icon = Image.open(resource("assets/studio_icon.png"))
@@ -714,13 +769,43 @@ class Hub(tk.Tk):
             self.iconphoto(True, self._app_icon)
         except Exception:
             pass
-        self.geometry(f"{W}x{H}")
-        self.resizable(False, False)
-        self.configure(bg=BG)
-
         fams = set(tkfont.families())
         self.FONT = "Zalando Sans Expanded" if "Zalando Sans Expanded" in fams else "Helvetica"
+        self._img_cache = {}
+        self.lang = self._state().get("lang", "fr")
+        if self.lang not in [code for code, _, _ in LANGS]:
+            self.lang = "fr"
+        self.canvas = tk.Canvas(self, width=W, height=H, highlightthickness=0,
+                                bg=ECHELON_NUIT)
+        self.canvas.pack(fill="both", expand=True)
 
+        self._splash(self.T("splash_maj"), 0.20)
+        # auto-update du hub AVANT toute UI : si un nouvel exe est publié,
+        # on le télécharge, on se remplace et on redémarre.
+        if self._self_update():
+            self.destroy()
+            return
+        self._splash(self.T("splash_cat"), 0.65)
+        global GAMES
+        GAMES = load_games()   # catalogue distant → cache → défaut
+        self._splash(self.T("splash_cat"), 1.0)
+        # empreinte du catalogue en place : sert à ne redessiner que s'il bouge
+        self._cat_sig = json.dumps(GAMES, sort_keys=True, default=str)
+        self._cat_mtime = None
+        self._cat_encours = False
+        # prechargement : le fil de fond n'ecrit JAMAIS sur l'UI d'installation,
+        # elle appartient au clic JOUER. Il a sa propre ligne et son propre %.
+        self._pre_ident = None
+        self._pre_stop = False
+        self._pre_texte = ""
+        self._pre_pct = 0.0
+        self._pre_lock = threading.Lock()
+        self._pre_traites = set()      # succes ET echecs : les deux consomment
+        self._pre_echecs = {}
+        self._pre_java_echecs = 0
+        self._pre_fin = ""             # « X est prêt à jouer », ligne qui reste
+        self._enjeu = False            # une partie tourne : on ne touche à rien
+        self.configure(bg=BG)
         self.selected = 0
         # coquille v2 : le rail navigue entre PAGES, la sélection de jeu est
         # un état à part (l'Accueil est la fiche du jeu sélectionné).
@@ -737,9 +822,6 @@ class Hub(tk.Tk):
         self._card_anim = []
         # versions distantes par jeu, pour un badge « Mise à jour » honnête
         self._remote_ver = {}
-        self.lang = self._state().get("lang", "fr")
-        if self.lang not in [c for c, _, _ in LANGS]:
-            self.lang = "fr"
         self.lang_open = False
         self.prof_open = False
         self.options_open = False
@@ -762,7 +844,6 @@ class Hub(tk.Tk):
         self._cancel = False
         self._online = {}   # id de jeu → nb de joueurs (None = injoignable)
         self._discord = None  # (total, en_ligne) du Discord, ou None si injoignable
-        self._img_cache = {}
         self._fade_cache = {}
         self._fading = None
         self.hover = None
@@ -770,8 +851,7 @@ class Hub(tk.Tk):
         self.particles = [[random.uniform(SIDEBAR, W), random.uniform(0, H),
                            random.uniform(0.25, 0.9), random.randint(1, 3)] for _ in range(26)]
 
-        self.canvas = tk.Canvas(self, width=W, height=H, highlightthickness=0, bg=BG)
-        self.canvas.pack(fill="both", expand=True)
+        self.canvas.configure(bg=BG)
         self.canvas.bind("<Button-1>", self._click)
         self.canvas.bind("<Motion>", self._motion)
         # molette + glissement : uniquement utiles à la page Journal
@@ -791,8 +871,119 @@ class Hub(tk.Tk):
         threading.Thread(target=self._updates_loop, daemon=True).start()
         threading.Thread(target=self._autoupdate_boot, daemon=True).start()
         threading.Thread(target=self._rpc_loop, daemon=True).start()
+        threading.Thread(target=self._preload_loop, daemon=True).start()
         self._draw()
         self.after(FPS_MS, self._tick)
+        self.after(1500, self._watch_catalog)
+
+    def _splash(self, texte, part=0.0):
+        """Écran d'attente : la bannière du launcher et une ligne d'état.
+
+        Il vit avant le hub, sur le même canevas — le premier `_draw()`
+        l'effacera. `self.update()` force le rendu tout de suite : sans ça Tk
+        attendrait la boucle d'événements, qui ne tourne pas encore.
+        """
+        try:
+            c = self.canvas
+            c.delete("all")
+            c.create_rectangle(0, 0, W, H, fill=ECHELON_NUIT, width=0)
+            try:
+                c.create_image(W // 2, H // 2 - 50,
+                               image=self._load("assets/launcher_banner.png",
+                                                size=(1000, 500)))
+            except Exception:
+                c.create_text(W // 2, H // 2 - 50, text="STUDIO ECHELON",
+                              fill=ECHELON, font=(self.FONT, 30, "bold"))
+            # SOUS la banniere, pas dessus : l'image fait 1000x494 centree en
+            # H//2-50, donc son bas tombe vers 577.
+            bw, bh = 340, 3
+            bx, by = (W - bw) // 2, 622
+            c.create_rectangle(bx, by, bx + bw, by + bh, fill="#12303B", width=0)
+            c.create_rectangle(bx, by, bx + int(bw * max(0.0, min(1.0, part))),
+                               by + bh, fill=ECHELON, width=0)
+            c.create_text(W // 2, by + 26, text=texte, fill="#7FA6B4",
+                          font=(self.FONT, 9))
+            self.update()
+        except Exception:
+            logging.warning("écran d'attente", exc_info=True)
+
+    # ── catalogue vivant ──────────────────────────────────────────────
+    def _watch_catalog(self):
+        """Relit le catalogue et redessine s'il a bougé.
+
+        En aperçu (ECHELON_CATALOG) c'est un fichier local : on regarde sa date
+        chaque seconde, donc une modification au panneau se voit tout de suite.
+        En vrai c'est le catalogue publié, relu toutes les deux minutes — un
+        joueur reçoit une annonce ou un nouveau projet sans relancer le hub.
+
+        La relecture part dans un fil : en distant elle fait un appel réseau de
+        plusieurs secondes, et le faire sur le fil Tk figerait l'animation.
+        """
+        apercu = os.environ.get("ECHELON_CATALOG")
+        try:
+            bouge = True
+            if apercu:
+                m = os.path.getmtime(apercu)
+                bouge = (m != self._cat_mtime)
+                self._cat_mtime = m
+            if bouge and not self.busy and not self._cat_encours:
+                self._cat_encours = True
+                threading.Thread(target=self._relire_catalogue, daemon=True).start()
+        except Exception:
+            logging.warning("surveillance du catalogue", exc_info=True)
+        self.after(1200 if apercu else 120000, self._watch_catalog)
+
+    def _relire_catalogue(self):
+        try:
+            neufs = load_games()
+            sig = json.dumps(neufs, sort_keys=True, default=str)
+        except Exception:
+            logging.warning("catalogue illisible", exc_info=True)
+            self._cat_encours = False
+            return
+        self.after(0, self._appliquer_catalogue, neufs, sig)
+
+    def _appliquer_catalogue(self, neufs, sig):
+        global GAMES
+        self._cat_encours = False
+        if not neufs or sig == self._cat_sig:
+            return
+        self._cat_sig = sig
+        courant = GAMES[self.selected]["id"] if GAMES else None
+        GAMES = neufs
+        # on suit le projet sélectionné par son id : son rang a pu changer
+        self.selected = next((i for i, g in enumerate(GAMES)
+                              if g["id"] == courant), 0)
+        for k in ("library", "news", "downloads"):
+            self.scroll[k] = 0
+        logging.info("catalogue rechargé : %d projet(s)", len(GAMES))
+        # On garde l'ancien dictionnaire vivant pendant le redessin : les
+        # PhotoImage encore posees sur le canevas ne doivent pas etre liberees
+        # avant que _draw ait recree les elements.
+        vieux = self._purger_visuels()
+        try:
+            self._draw()
+        except Exception:
+            logging.error("redessin après rechargement", exc_info=True)
+        finally:
+            vieux.clear()
+
+    def _purger_visuels(self):
+        """Vide du cache tout ce qui depend d'un projet ou d'un fichier image.
+
+        On conserve le reste (masques arrondis, voile, tete de skin) : ca ne
+        depend pas du catalogue et le recalculer ferait clignoter le hub.
+        """
+        garde = {}
+        for k, v in self._img_cache.items():
+            t = k[0] if isinstance(k, tuple) else k
+            if isinstance(t, str) and (t in ("bgpil", "bg", "cover")
+                                       or "/" in t or "\\" in t):
+                continue
+            garde[k] = v
+        vieux = self._img_cache
+        self._img_cache = garde
+        return vieux
 
     # ── ping serveurs (Server List Ping, zéro dépendance) ─────────────
     @staticmethod
@@ -974,9 +1165,12 @@ class Hub(tk.Tk):
             time.sleep(2)
             if self.busy:
                 return                 # une install est deja en cours
+            # « déjà joué », pas « dossier mods présent » : le préchargement
+            # cree ce dossier, et un projet seulement survolé serait devenu
+            # abonné a la mise a jour au demarrage.
+            etat = self._state()
             todo = [g for g in GAMES
-                    if self._has_update(g)
-                    and os.path.isdir(os.path.join(g["dir"], "mods"))]
+                    if self._has_update(g) and etat.get("joue_" + g["id"])]
             if todo:
                 logging.info("maj auto au démarrage : %s", [g["id"] for g in todo])
                 self.after(0, self._autoupdate_run, todo)
@@ -985,19 +1179,45 @@ class Hub(tk.Tk):
     def _autoupdate_run(self, todo):
         if self.busy:
             return
+        # index par ID : le catalogue a pu etre remplace entre le calcul de
+        # `todo` et maintenant. GAMES.index() levait alors ValueError dans un
+        # callback Tk APRES avoir pose busy=True — plus rien ne le remettait a
+        # False et le hub restait fige sur la modale d'installation, pour
+        # toujours.
+        i = self._rang(todo[0])
+        if i is None:
+            logging.info("maj auto abandonnée : le catalogue a changé")
+            return
         self.busy = True
         self.autoupdating = True
-        self.selected = GAMES.index(todo[0])
-        self.page = "home"
-        self._draw()
-        threading.Thread(target=self._autoupdate_thread, args=(todo,),
-                         daemon=True).start()
+        try:
+            self.selected = i
+            self.page = "home"
+            self._draw()
+            threading.Thread(target=self._autoupdate_thread, args=(todo,),
+                             daemon=True).start()
+        except Exception:
+            logging.error("maj auto non lancée", exc_info=True)
+            self.busy = self.autoupdating = False
+            self._draw()
+
+    @staticmethod
+    def _rang(g):
+        return next((i for i, x in enumerate(GAMES) if x["id"] == g["id"]), None)
 
     def _autoupdate_thread(self, todo):
         try:
             self._cancel = False
+            self._pre_stop = True
+            while not self._pre_lock.acquire(timeout=0.4):
+                if self._cancel:
+                    raise Hub._Cancelled()
+            self._pre_lock.release()
             for g in todo:
-                self.selected = GAMES.index(g)
+                i = self._rang(g)
+                if i is None:
+                    continue
+                self.selected = i
                 self.after(0, self._draw)
                 self.status.set(self.T("downloading", n=g["name"]))
                 mods = os.path.join(g["dir"], "mods")
@@ -1013,6 +1233,189 @@ class Hub(tk.Tk):
             self.busy = False
             self.autoupdating = False
             self.after(0, self._draw)
+
+    # ── préchargement ─────────────────────────────────────────────────
+    def _pre_ligne(self):
+        txt = self._pre_texte or self._pre_fin
+        if not txt:
+            return ""
+        p = int(self._pre_pct or 0)
+        if self._pre_texte and 0 < p < 100:
+            return "%s  %d %%" % (txt, p)
+        return txt
+
+    def _pre_dire(self, txt, pct=0.0):
+        self._pre_texte, self._pre_pct = txt, pct
+        try:
+            self.after(0, self._draw)
+        except Exception:
+            pass
+
+    def _est_muet(self):
+        """Vrai uniquement dans le fil de prechargement."""
+        return threading.get_ident() == self._pre_ident
+
+    def _pre_halte(self):
+        """Vrai des qu'une vraie installation demarre, ou que le joueur a change
+        d'avis. On s'arrete a la frontiere d'etape : mll ne s'interrompt pas."""
+        return (self._pre_stop or self.busy or self.autoupdating
+                or self._enjeu)
+
+    def _pre_callbacks(self):
+        """mll appelle setProgress en continu : c'est notre seul point
+        d'annulation gratuit a l'interieur d'une etape."""
+        etat = {"max": 100}
+
+        def avance(v):
+            if self._pre_halte():
+                raise Hub._Cancelled()
+            self._pre_pct = v / max(1, etat["max"]) * 100
+
+        return {"setStatus": lambda s: None, "setProgress": avance,
+                "setMax": lambda v: etat.__setitem__("max", v)}
+
+    def _preload_loop(self):
+        """Prepare le projet regarde, pendant qu'il est regarde.
+
+        Trois garde-fous : on ne precharge que le projet SELECTIONNE et
+        seulement s'il l'est reste ~20 s (sinon parcourir 20 projets
+        telechargerait 20 jeux) ; trois projets au maximum par session ; et
+        `config.preload = false` dans le catalogue coupe tout a distance.
+        """
+        import time
+        self._pre_ident = threading.get_ident()
+        time.sleep(10)                      # laisser le hub s'afficher
+        vus, stable, dernier = set(), 0, None
+        while True:
+            time.sleep(6)
+            g = None
+            try:
+                if self.busy or self.autoupdating or self._enjeu or not GAMES:
+                    stable = 0
+                    continue
+                if not self._state().get("preload", conf("preload", True)):
+                    continue
+                g = GAMES[min(self.selected, len(GAMES) - 1)]
+                stable = stable + 1 if g["id"] == dernier else 0
+                dernier = g["id"]
+                with self._pre_lock:
+                    self._pre_stop = False
+                    try:
+                        self._pre_visuels(vus)
+                        # tout ce qui coute cher est APRES les garde-fous :
+                        # avant, le runtime Java partait des la 3e seconde,
+                        # sans quota, sans controle de place, et se retentait
+                        # toutes les 6 s en cas d'echec.
+                        if self._pre_halte() or stable < 3:
+                            continue
+                        if (g["id"] in self._pre_traites
+                                or len(self._pre_traites) >= 3
+                                or not self._pre_place(g)):
+                            continue
+                        self._pre_java(g)
+                        if self._pre_halte():
+                            continue
+                        self._pre_jeu(g)
+                        self._pre_traites.add(g["id"])
+                        self._pre_fin = self.T("pre_ready", n=g["name"])
+                    finally:
+                        self._pre_dire("")
+            except Hub._Cancelled:
+                self._pre_dire("")
+            except Exception as e:
+                if g is not None:
+                    n = self._pre_echecs.get(g["id"], 0) + 1
+                    self._pre_echecs[g["id"]] = n
+                    if n >= 2:
+                        # un echec consomme un creneau, sinon un projet casse
+                        # retelechargerait indefiniment sans jamais atteindre
+                        # le plafond de trois.
+                        self._pre_traites.add(g["id"])
+                    logging.warning("préchargement de %s abandonné : %s", g["id"], e)
+                self._pre_dire("")
+
+    def _pre_place(self, g):
+        """Trois gigaoctets libres au minimum.
+
+        Preparer un jeu en tache de fond ne doit pas remplir le disque de
+        quelqu'un qui n'a rien demande — et un disque plein en pleine ecriture
+        casse l'installation en cours, pas seulement la nôtre.
+        """
+        try:
+            libre = shutil.disk_usage(os.path.dirname(os.path.abspath(g["dir"]))).free
+        except Exception:
+            return True                     # dans le doute, on laisse faire
+        if libre < 3 * 1024 ** 3:
+            logging.info("préchargement suspendu : %.1f Go libres",
+                         libre / 1024.0 ** 3)
+            return False
+        return True
+
+    def _pre_visuels(self, vus):
+        """Les images du catalogue sur le disque, une fois pour toutes : sinon
+        le premier affichage d'un projet attend son key-art."""
+        for g in list(GAMES):
+            for k in ("logo_url", "bg_url", "card_url"):
+                u = g.get(k)
+                if not u or u in vus:
+                    continue
+                try:
+                    _cached_asset(u)
+                    vus.add(u)
+                except Exception:
+                    pass                    # on retentera au tour suivant
+                if self._pre_halte():
+                    return
+
+    def _pre_java(self, g):
+        """Le runtime Java est PARTAGÉ entre projets : le prendre d'avance,
+        c'est ~180 Mo que le joueur n'attend pas au clic JOUER.
+
+        On prepare celui du PROJET vise : un projet peut demander un autre
+        runtime au catalogue, et preparer le mauvais ne servait a rien.
+        """
+        if self._pre_java_echecs >= 2:
+            return
+        jroot = game_root("StudioEchelon")
+        jrt = java_runtime(g)
+        try:
+            if mll.runtime.get_executable_path(jrt, jroot):
+                return
+        except Exception:
+            pass
+        logging.info("préchargement du runtime Java %s", jrt)
+        self._pre_dire(self.T("pre_java"))
+        try:
+            mll.runtime.install_jvm_runtime(jrt, jroot, callback=self._pre_callbacks())
+        except Hub._Cancelled:
+            raise
+        except Exception as e:
+            self._pre_java_echecs += 1
+            logging.info("préchargement Java repoussé (%d/2) : %s",
+                         self._pre_java_echecs, e)
+        self._pre_dire("")
+
+    def _pre_jeu(self, g):
+        """Minecraft, Fabric, le mod et ses dépendances pour le projet en vue."""
+        mcv = mc_version(g)
+        try:
+            deja = any("fabric" in v["id"] and mcv in v["id"]
+                       for v in mll.utils.get_installed_versions(g["dir"]))
+        except Exception:
+            deja = False
+        logging.info("préchargement de %s : fabric=%s", g["id"], "déjà là" if deja else "à installer")
+        self._pre_dire(self.T("pre_game", n=g["name"]))
+        if not deja:
+            os.makedirs(g["dir"], exist_ok=True)
+            mll.fabric.install_fabric(mcv, g["dir"], callback=self._pre_callbacks())
+        if self._pre_halte():
+            return
+        mods = os.path.join(g["dir"], "mods")
+        os.makedirs(mods, exist_ok=True)
+        self._sync_mod(g, mods)
+        self._ensure_deps(g, mods)
+        logging.info("préchargement de %s terminé : %d mod(s) en place",
+                     g["id"], len(os.listdir(mods)))
 
     def _has_update(self, g):
         """True seulement si on connaît les DEUX versions et qu'elles diffèrent."""
@@ -1153,7 +1556,14 @@ del "%~f0"
     def _load(self, path, size=None, dim=1.0):
         key = (path, size, dim)
         if key not in self._img_cache:
-            im = Image.open(self._asset_path(path)).convert("RGBA")
+            try:
+                im = Image.open(self._asset_path(path)).convert("RGBA")
+            except Exception:
+                # image absente ou illisible : carre transparent. Le catalogue
+                # est distant, un projet peut arriver sans asset embarque — ca
+                # ne doit jamais interrompre le dessin de tout le hub.
+                logging.warning("image introuvable : %s", path)
+                im = Image.new("RGBA", size or (130, 42), (0, 0, 0, 0))
             if size:
                 im.thumbnail(size, Image.LANCZOS)
             if dim < 1.0:
@@ -1164,7 +1574,16 @@ del "%~f0"
     def _bg_pil(self, game):
         key = ("bgpil", game["id"])
         if key not in self._img_cache:
-            im = Image.open(self._asset_path(game["bg"])).convert("RGB")
+            try:
+                im = Image.open(self._asset_path(game["bg"])).convert("RGB")
+            except Exception:
+                logging.warning("key-art introuvable : %s", game.get("bg"))
+                acc = str(game.get("accent_dim") or game.get("accent") or "#12181B")
+                try:
+                    t = tuple(int(acc[i:i + 2], 16) for i in (1, 3, 5))
+                except Exception:
+                    t = (18, 24, 27)
+                im = Image.new("RGB", (W, H), tuple(int(v * 0.22) + 8 for v in t))
             ratio = max(W / im.width, H / im.height)
             im = im.resize((int(im.width * ratio) + 1, int(im.height * ratio) + 1), Image.LANCZOS)
             x0 = (im.width - W) // 2
@@ -1277,7 +1696,9 @@ del "%~f0"
             bx0, by0, bw, bh = self._bar_geom
             frac = max(0.0, min(1.0, self.progress_val.get() / 100.0))
             c.coords(self._bar_fill, bx0, by0, bx0 + bw * frac, by0 + bh)
-            c.itemconfig(self._status_item, text=self.status.get())
+            texte = self.status.get() or self._pre_ligne()
+            c.itemconfig(self._status_item, text=texte,
+                         fill="#C8D8CC" if self.status.get() else "#7A948A")
 
         # UI de chargement : barre, pourcentage et points qui battent
         if hasattr(self, "_inst_bar"):
@@ -1341,7 +1762,9 @@ del "%~f0"
     def _online_label(self, g):
         """(texte, couleur) du statut serveur : joueurs en ligne / hors ligne."""
         if not g.get("server"):
-            return self.T("online"), "#5AE68C"
+            # pas de serveur declare : dire « En ligne » en vert etait un
+            # mensonge affiche en permanence.
+            return self.T("no_server"), "#7A8A84"
         n = self._online.get(g["id"], "…")
         if n is None:
             return self.T("offline"), "#7A8A84"
@@ -1420,21 +1843,23 @@ del "%~f0"
             for p in self.particles
         ]
 
+        # L'Accueil est la fiche DU PROJET : il garde sa couleur. Tout le reste
+        # est la coque du studio et porte le bleu Echelon.
         if self.page == "home":
             self._draw_home(c, g, accent)
         else:
             c.create_image(0, 0, anchor="nw", image=self._page_veil())
             if self.page == "library":
-                self._draw_library(c, accent)
+                self._draw_library(c, ECHELON)
             elif self.page == "news":
-                self._draw_news(c, accent)
+                self._draw_news(c, ECHELON)
             elif self.page == "downloads":
-                self._draw_downloads(c, accent)
+                self._draw_downloads(c, ECHELON)
 
         # rail puis barre haute PAR-DESSUS : ils masquent les débords de grille
         # quand elle défile, ce qui évite d'avoir à clipper le canvas.
-        self._draw_rail(c, accent)
-        self._draw_topbar(c, accent)
+        self._draw_rail(c, ECHELON)
+        self._draw_topbar(c, ECHELON)
 
         if self.options_open:
             self._draw_options(c, g)
@@ -2944,14 +3369,38 @@ del "%~f0"
         except Exception:
             return {}
 
+    _etat_verrou = threading.Lock()
+
     def _save_state(self, **kv):
-        os.makedirs(os.path.dirname(self._cfg()), exist_ok=True)
-        st = self._state()
-        st.update(kv)
-        json.dump(st, open(self._cfg(), "w"))
+        """Lecture-modification-ecriture atomique.
+
+        Le prechargement ecrit mod_<canal> pendant que le joueur tape son
+        pseudo : sans verrou les deux se marchaient dessus, et sans fichier
+        temporaire une coupure au mauvais moment laissait un client.json
+        tronque, donc illisible — tous les reglages perdus.
+        """
+        with Hub._etat_verrou:
+            os.makedirs(os.path.dirname(self._cfg()), exist_ok=True)
+            st = self._state()
+            st.update(kv)
+            tmp = self._cfg() + ".tmp"
+            with open(tmp, "w") as f:
+                json.dump(st, f)
+            os.replace(tmp, self._cfg())
+
+    PSEUDO_OK = re.compile(r"^[A-Za-z0-9_]{3,16}$")
 
     def _load_pseudo(self):
-        return self._state().get("pseudo", "Joueur")
+        return self._state().get("pseudo", "")
+
+    def _pseudo_valide(self):
+        """Nom de compte Minecraft : 3 a 16 caracteres, lettres/chiffres/_.
+
+        Sans ca le hub retombait sur « Joueur » : tous ceux qui ne touchaient
+        pas au champ partageaient le meme nom et le meme UUID hors-ligne, donc
+        le meme personnage sur le serveur.
+        """
+        return bool(Hub.PSEUDO_OK.match((self.pseudo_text or "").strip()))
 
     # ── installation + lancement intégrés ─────────────────────────────
     def _callbacks(self):
@@ -2972,17 +3421,65 @@ del "%~f0"
         self._draw()
         threading.Thread(target=self._play_thread, args=(GAMES[self.selected],), daemon=True).start()
 
+    @staticmethod
+    def _fabric_pose(g, mcv):
+        """Fabric est-il deja installe pour CETTE version ?
+
+        On compare le champ `inheritsFrom` du profil plutot que de chercher la
+        version dans son nom : « 1.21.1 » est contenu dans « 1.21.11 », et un
+        test par sous-chaine se trompera le jour ou cette version sortira.
+        """
+        try:
+            for v in mll.utils.get_installed_versions(g["dir"]):
+                if "fabric" not in v["id"]:
+                    continue
+                brut = os.path.join(g["dir"], "versions", v["id"], v["id"] + ".json")
+                try:
+                    with open(brut, encoding="utf-8") as f:
+                        if json.load(f).get("inheritsFrom") == mcv:
+                            return True
+                except Exception:
+                    if v["id"].endswith("-" + mcv):
+                        return True
+        except Exception:
+            pass
+        return False
+
     def _play_thread(self, g):
         try:
             self._cancel = False
-            pseudo = (self.pseudo_text.strip() or "Joueur")[:16]
+            pseudo = (self.pseudo_text or "").strip()
+            if not Hub.PSEUDO_OK.match(pseudo):
+                self.status.set(self.T("need_pseudo"))
+                self.busy = False
+                self.after(0, self._draw)
+                return
+            # Le prechargement travaille peut-etre deja sur CE projet. On lui
+            # demande la main et on attend la fin de son etape : ce n'est pas
+            # du temps perdu, c'est exactement le travail qu'on allait faire.
+            self._pre_stop = True
+            if self._pre_lock.locked():
+                self.status.set(self.T("preparing"))
+                self.after(0, self._draw)
+                # attente PATIENTE, pas bloquante : une etape mll ne s'arrete
+                # pas au milieu, mais ANNULER doit repondre tout de suite et la
+                # barre doit montrer l'avancement reel au lieu de rester a 0 %.
+                while not self._pre_lock.acquire(timeout=0.4):
+                    if self._cancel:
+                        raise Hub._Cancelled()
+                    self.progress_val.set(self._pre_pct)
+                    self.status.set(self._pre_ligne() or self.T("preparing"))
+                self._pre_lock.release()
+            self._pre_dire("")
+            self.progress_val.set(0)
             self._save_state(pseudo=pseudo)
             os.makedirs(g["dir"], exist_ok=True)
             logging.info("JOUER %s (pseudo=%s)", g["id"], pseudo)
 
             mcv = mc_version(g)
-            self.status.set(self.T("installing_mc", v=mcv))
-            mll.fabric.install_fabric(mcv, g["dir"], callback=self._callbacks())
+            if not self._fabric_pose(g, mcv):
+                self.status.set(self.T("installing_mc", v=mcv))
+                mll.fabric.install_fabric(mcv, g["dir"], callback=self._callbacks())
             self._check_cancel()
             fabric_version = None
             for v in mll.utils.get_installed_versions(g["dir"]):
@@ -3036,6 +3533,10 @@ del "%~f0"
             self.progress_val.set(100)
             self.status.set(self.T("have_fun"))
             launch_game(cmd, g["dir"])
+            # une partie tourne : le fil de fond ne doit plus toucher au disque
+            # ni voler de la bande passante au jeu.
+            self._enjeu = True
+            self._save_state(**{"joue_" + g["id"]: True})
             logging.info("lancé %s", g["id"])
             if o.get("close", False):
                 self.after(1500, self.destroy)
@@ -3055,6 +3556,13 @@ del "%~f0"
         pass
 
     def _check_cancel(self):
+        if self._est_muet():
+            # le prechargement ne connait QUE ses propres raisons de s'arreter :
+            # un ANNULER du joueur laissait sinon _cancel a True et le tuait
+            # pour toute la session.
+            if self._pre_halte():
+                raise Hub._Cancelled()
+            return
         if self._cancel:
             raise Hub._Cancelled()
 
@@ -3062,10 +3570,26 @@ del "%~f0"
         """téléchargement par blocs : barre de progression VIVANTE + annulable."""
         import urllib.request
         self._check_cancel()
-        if label:
+        muet = self._est_muet()
+        if label and not muet:
             self.status.set(self.T("downloading", n=label))
         req = urllib.request.Request(url, headers={"User-Agent": "echelon-client"})
         tmp = dest + ".part"
+        try:
+            self._telecharger(req, tmp, muet)
+        except BaseException:
+            # sans ca chaque annulation laisse un fichier a moitie ecrit dans
+            # le dossier mods ; Fabric refuse de demarrer sur un jar tronque.
+            try:
+                os.remove(tmp)
+            except Exception:
+                pass
+            raise
+        os.replace(tmp, dest)
+        logging.info("téléchargé %s (%d octets)", url, os.path.getsize(dest))
+
+    def _telecharger(self, req, tmp, muet):
+        import urllib.request
         with urllib.request.urlopen(req, timeout=120) as r, open(tmp, "wb") as f:
             total = int(r.headers.get("Content-Length") or 0)
             done = 0
@@ -3076,23 +3600,23 @@ del "%~f0"
                     break
                 f.write(chunk)
                 done += len(chunk)
-                if total:
+                if total and not muet:
                     self.progress_val.set(done / total * 100)
-        os.replace(tmp, dest)
-        logging.info("téléchargé %s (%d octets)", url, os.path.getsize(dest))
+                elif total:
+                    self._pre_pct = done / total * 100
 
     def _sync_channel(self, channel, mod_file, label, mods, required):
         """synchronise un canal GitHub (manifest + jar, sha256 vérifié)."""
         import urllib.request, hashlib
         base = RELEASES + "/" + channel
         target = os.path.join(mods, mod_file)
-        manifest = None
+        manifest, souci = None, None
         try:
             req = urllib.request.Request(base + "/manifest.json",
                                          headers={"User-Agent": "echelon-client"})
             manifest = json.load(urllib.request.urlopen(req, timeout=8))
-        except Exception:
-            pass
+        except Exception as e:
+            souci = e
         if manifest:
             want = manifest.get("mod_version", "")
             have = self._state().get("mod_" + channel, "")
@@ -3107,7 +3631,15 @@ del "%~f0"
                 shutil.move(target + ".new", target)
                 self._save_state(**{"mod_" + channel: want})
         elif required and not os.path.exists(target):
-            raise RuntimeError("Pas de connexion pour télécharger le jeu.")
+            # 404 = le canal existe mais rien n'y a jamais ete publie. Dire
+            # "pas de connexion" envoyait le joueur chercher un probleme chez
+            # lui alors que le mod n'est simplement pas encore en ligne.
+            if getattr(souci, "code", None) == 404:
+                raise RuntimeError(
+                    "%s n'est pas encore disponible : son mod n'a jamais été "
+                    "publié (canal « %s »)." % (label, channel))
+            raise RuntimeError("Impossible de récupérer %s — vérifie ta connexion."
+                               % label)
 
     def _sync_mod(self, g, mods):
         """mod principal + mods annexes (EchelonSkin…) du jeu."""
@@ -3116,22 +3648,109 @@ del "%~f0"
             self._check_cancel()
             self._sync_channel(ex["channel"], ex["file"], ex["channel"], mods, False)
 
+    MODPACK_ETAT = ".echelon-modpack.json"
+
+    def _modpack_etat(self, mods):
+        try:
+            with open(os.path.join(mods, self.MODPACK_ETAT)) as f:
+                return json.load(f)
+        except Exception:
+            return {}
+
+    def _modpack_signature(self, g):
+        """Change des que le pack change — et seulement alors.
+
+        Sans elle, deux choix également mauvais : retélécharger à chaque
+        lancement (churn inutile), ou ne jamais rien réévaluer (deux joueurs
+        installés à un mois d'écart n'ont pas le même pack).
+        """
+        import hashlib
+        brut = json.dumps({"deps": g["deps"], "mc": mc_version(g)}, sort_keys=True)
+        return hashlib.sha1(brut.encode()).hexdigest()[:16]
+
     def _ensure_deps(self, g, mods):
         import urllib.request
+        signature = self._modpack_signature(g)
+        etat = self._modpack_etat(mods)
+        poses = dict(etat.get("poses") or {})
+        revision = signature != etat.get("signature")
+        if revision:
+            logging.info("modpack %s : nouvelle révision %s", g["id"], signature)
+
         for f in os.listdir(mods):
             if any(f.startswith(p) for p in g["purge"]):
                 logging.info("purge %s", f)
                 os.remove(os.path.join(mods, f))
+
+        # ce que le hub avait posé et qui n'est plus au catalogue. On ne touche
+        # qu'aux fichiers dont on se souvient : un jar que le joueur a glissé
+        # lui-même dans le dossier ne nous appartient pas.
+        for prefix in [k for k in poses if k not in g["deps"]]:
+            chemin = os.path.join(mods, poses.pop(prefix))
+            if os.path.exists(chemin):
+                logging.info("retiré du modpack : %s", os.path.basename(chemin))
+                try:
+                    os.remove(chemin)
+                except Exception:
+                    logging.warning("suppression impossible : %s", chemin)
+
+        complet = True
         for prefix, project in g["deps"].items():
             self._check_cancel()
-            if any(f.startswith(prefix) for f in os.listdir(mods)):
+            connu = poses.get(prefix)
+            if connu and not os.path.exists(os.path.join(mods, connu)):
+                connu, poses[prefix] = None, None
+            if not connu:
+                # pack posé avant que le hub tienne cet état : on l'adopte au
+                # lieu d'en télécharger un doublon.
+                trouve = next((f for f in os.listdir(mods)
+                               if f.startswith(prefix) and f.endswith(".jar")), None)
+                if trouve:
+                    connu = poses[prefix] = trouve
+            if connu and not revision:
                 continue
             api = ("https://api.modrinth.com/v2/project/" + project
                    + "/version?game_versions=[%22" + mc_version(g) + "%22]&loaders=[%22fabric%22]")
             req = urllib.request.Request(api, headers={"User-Agent": "echelon-client"})
-            versions = json.load(urllib.request.urlopen(req))
-            f0 = versions[0]["files"][0]
-            self._download(f0["url"], os.path.join(mods, f0["filename"]), label=project)
+            try:
+                versions = json.load(urllib.request.urlopen(req, timeout=20))
+            except Exception as e:
+                complet = False
+                logging.warning("mod « %s » non résolu : %s", project, e)
+                if not connu:
+                    raise RuntimeError("Impossible de récupérer le mod « %s » : %s"
+                                       % (project, e))
+                continue    # une version est déjà en place, on joue avec
+            # Modrinth rend la plus recente d'abord, betas comprises. On prend
+            # la derniere version STABLE quand il y en a une : un joueur n'a
+            # rien a faire d'une beta qu'il n'a pas choisie.
+            stables = [v for v in versions if v.get("version_type") == "release"]
+            choix = (stables or versions)
+            if not choix or not choix[0].get("files"):
+                raise RuntimeError("Le mod « %s » n'a aucune version Fabric %s : "
+                                   "le modpack est à corriger."
+                                   % (project, mc_version(g)))
+            f0 = choix[0]["files"][0]
+            if connu and connu != f0["filename"]:
+                try:                        # la révision change de version
+                    os.remove(os.path.join(mods, connu))
+                except Exception:
+                    pass
+            cible = os.path.join(mods, f0["filename"])
+            if not os.path.exists(cible):
+                self._download(f0["url"], cible, label=project)
+            poses[prefix] = f0["filename"]
+
+        # la signature n'est retenue que si TOUT a été résolu : sinon une
+        # coupure réseau figerait un pack incomplet pour toujours.
+        etat = {"poses": {k: v for k, v in poses.items() if v}}
+        if complet:
+            etat["signature"] = signature
+        try:
+            with open(os.path.join(mods, self.MODPACK_ETAT), "w") as f:
+                json.dump(etat, f)
+        except Exception:
+            logging.warning("état du modpack non écrit")
 
 
 if __name__ == "__main__":

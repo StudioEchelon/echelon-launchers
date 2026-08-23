@@ -87,10 +87,64 @@
      "file": "echelonskin.jar"
     }
    ],
-   "featured": true,
+   "featured": false,
    "logo": "assets/glaivolver_logo.png",
    "bg": "assets/glaivolver_bg.png",
-   "rpc_asset": "donshot"
+   "rpc_asset": "donshot",
+   "hidden": true
+  },
+  {
+   "id": "divideandconquer",
+   "name": "Divide & Conquer",
+   "tagline": {
+    "fr": "Serveur Minecraft",
+    "en": ""
+   },
+   "accent": "#FF3D8B",
+   "dir_name": "DivideAndConquer",
+   "channel": "dac",
+   "mod_file": "divideandconquer.jar",
+   "deps": {
+    "fabric-api": "fabric-api",
+    "sodium": "sodium",
+    "lithium": "lithium"
+   },
+   "purge": [],
+   "news": {
+    "fr": [],
+    "en": []
+   },
+   "discord": "https://playechelon.net",
+   "hidden": false,
+   "logo_url": "https://github.com/StudioEchelon/echelon-launchers/releases/download/client/divideandconquer_logo_2d076167.png",
+   "bg_url": "https://github.com/StudioEchelon/echelon-launchers/releases/download/client/divideandconquer_bg_26415586.png",
+   "card_url": "https://github.com/StudioEchelon/echelon-launchers/releases/download/client/divideandconquer_card_26415586.png",
+   "featured": true
+  },
+  {
+   "id": "artnival",
+   "name": "Artnival",
+   "tagline": {
+    "fr": "",
+    "en": ""
+   },
+   "accent": "#FF0000",
+   "dir_name": "Artnival",
+   "channel": "artnival",
+   "mod_file": "artnival.jar",
+   "deps": {
+    "fabric-api": "fabric-api"
+   },
+   "purge": [],
+   "news": {
+    "en": []
+   },
+   "discord": "https://playechelon.net",
+   "hidden": false,
+   "logo_url": "https://github.com/StudioEchelon/echelon-launchers/releases/download/client/artnival_logo_c4e81cf7.png",
+   "featured": false,
+   "card_url": "https://github.com/StudioEchelon/echelon-launchers/releases/download/client/artnival_card_c4e81cf7.png",
+   "bg_url": "https://github.com/StudioEchelon/echelon-launchers/releases/download/client/artnival_bg_c4e81cf7.png"
   }
  ],
  "rpc": {

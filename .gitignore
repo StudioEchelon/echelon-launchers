@@ -7,3 +7,8 @@ client/dist/
 client/*.spec
 # sauvegardes des jars publies, pour pouvoir revenir en arriere
 .rollback/
+.env
+# sauvegardes automatiques du panneau
+.panel-backups/
+.panel-jars/
+.panel-art/

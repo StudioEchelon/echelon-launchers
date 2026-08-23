@@ -32,7 +32,7 @@ jobs:
       # Le garde-fou tourne ICI, pas sur la parole de celui qui a poussé :
       # un catalogue invalide fait échouer le job et n'atteint aucun joueur.
       - name: Valider le catalogue
-        run: python tools/echelon.py check
+        run: python tools/echelon.py check --canaux
 
       - name: État publié
         run: python tools/echelon.py list
