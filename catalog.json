@@ -28,7 +28,7 @@
      "Proximity voice, emotes, clans"
     ]
    },
-   "discord": "https://playechelon.net",
+   "discord": "https://discord.gg/4yngvNR5ZZ",
    "extra": [
     {
      "channel": "echelonskin",
@@ -80,7 +80,7 @@
      "Chests, cards, the Don Road"
     ]
    },
-   "discord": "https://playechelon.net",
+   "discord": "https://discord.gg/msKHjbHsGA",
    "extra": [
     {
      "channel": "echelonskin",
@@ -97,8 +97,8 @@
    "id": "divideandconquer",
    "name": "Divide & Conquer",
    "tagline": {
-    "fr": "Serveur Minecraft",
-    "en": ""
+    "fr": "Fonde ta nation. Prends celle des autres.",
+    "en": "Found your nation. Take everyone else's."
    },
    "accent": "#FF3D8B",
    "dir_name": "DivideAndConquer",
@@ -111,15 +111,26 @@
    },
    "purge": [],
    "news": {
-    "fr": [],
-    "en": []
+    "fr": [
+     "Hivernia : une planète de glace à rejoindre en fusée, seize biomes à explorer",
+     "Vingt-deux créatures des glaces, du Givron au Colosse de givre",
+     "Arcs laser, sabres laser, jetpack et armures renforcées",
+     "Table d'assemblage, pluies de météorites et framboisiers électrisés"
+    ],
+    "en": [
+     "Hivernia: an ice world you reach by rocket, sixteen biomes to explore",
+     "Twenty-two frost creatures, from the Givron to the Frost Colossus",
+     "Laser bows, laser blades, jetpacks and reinforced armour",
+     "Assembly table, meteor showers and electrified raspberry bushes"
+    ]
    },
-   "discord": "https://playechelon.net",
+   "discord": "https://discord.gg/q48SWJSt8M",
    "hidden": false,
    "logo_url": "https://github.com/StudioEchelon/echelon-launchers/releases/download/client/divideandconquer_logo_2d076167.png",
    "bg_url": "https://github.com/StudioEchelon/echelon-launchers/releases/download/client/divideandconquer_bg_26415586.png",
    "card_url": "https://github.com/StudioEchelon/echelon-launchers/releases/download/client/divideandconquer_card_26415586.png",
-   "featured": true
+   "featured": true,
+   "server": "62.210.212.136:25565"
   },
   {
    "id": "artnival",
@@ -139,7 +150,7 @@
    "news": {
     "en": []
    },
-   "discord": "https://playechelon.net",
+   "discord": "https://discord.gg/msKHjbHsGA",
    "hidden": false,
    "logo_url": "https://github.com/StudioEchelon/echelon-launchers/releases/download/client/artnival_logo_c4e81cf7.png",
    "featured": false,
@@ -155,7 +166,7 @@
  "config": {
   "mc_version": "1.21.1",
   "java_runtime": "java-runtime-delta",
-  "discord_invite": "playharbor",
+  "discord_invite": "msKHjbHsGA",
   "site_url": "https://studioechelon.fr",
   "ram": {
    "default": 3,
